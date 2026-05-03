@@ -14,6 +14,32 @@ or bundle a UI kit. Consumers must inject their own UI components.
 - `PasskeyLoginButton`
 - `PasskeySection`
 
+## Install
+
+`bwh-auth` is distributed from GitHub Releases as a packed npm tarball.
+
+```sh
+pnpm add https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.1/bwh-auth-0.1.1.tgz
+```
+
+Or pin it manually in `package.json`:
+
+```json
+{
+  "dependencies": {
+    "bwh-auth": "https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.1/bwh-auth-0.1.1.tgz"
+  }
+}
+```
+
+Install peer dependencies in the consuming app:
+
+```sh
+pnpm add @base-ui/react lucide-react react react-dom
+```
+
+React and React DOM are usually already present in Laravel/Vite apps.
+
 ## Component Injection
 
 Higher-level components require injected components so each app can use its own
@@ -57,3 +83,33 @@ Passkey components default to the Laravel package routes:
 - `DELETE /api/passkeys/:id`
 - `POST /api/passkeys/auth/options`
 - `POST /api/passkeys/auth`
+
+## Releasing
+
+Create and upload a GitHub release from this package directory:
+
+```sh
+pnpm release
+```
+
+The release script:
+
+- requires a clean git working tree
+- bumps `ui/package.json` version, defaulting to `patch`
+- runs `pnpm install --lockfile-only`
+- runs typecheck and build
+- creates `ui/release/bwh-auth-VERSION.tgz`
+- commits the version bump
+- creates and pushes a tag like `bwh-auth-v0.1.1`
+- creates a GitHub release with the tarball asset
+- prints the install URL
+
+Version bump options:
+
+```sh
+pnpm release patch
+pnpm release minor
+pnpm release major
+pnpm release --version=0.2.0
+pnpm release --dry-run
+```
