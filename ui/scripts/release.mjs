@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -96,12 +96,16 @@ if (existsSync(releaseDir)) {
 }
 mkdirSync(releaseDir, { recursive: true });
 
-const packedFileName = run('pnpm', ['pack', '--pack-destination', releaseDir], { cwd: packageDir });
-const packedPath = join(releaseDir, packedFileName);
+runVisible('pnpm', ['pack', '--pack-destination', releaseDir], { cwd: packageDir });
+const packedFiles = readdirSync(releaseDir).filter((fileName) => fileName.endsWith('.tgz'));
+if (packedFiles.length !== 1) {
+  throw new Error(`Expected exactly one packed tarball, found ${packedFiles.length}.`);
+}
+const packedPath = join(releaseDir, packedFiles[0]);
 
 if (packedPath !== assetPath) {
   rmSync(assetPath, { force: true });
-  runVisible('mv', [packedPath, assetPath], { cwd: packageDir });
+  renameSync(packedPath, assetPath);
 }
 
 if (args.dryRun) {
