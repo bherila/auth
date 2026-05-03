@@ -1,18 +1,20 @@
 import { KeyRound } from 'lucide-react';
 import * as React from 'react';
-import { Button } from 'bwh-ui';
 
-import type { AuthEndpointConfig, AuthJsonResponse } from './types';
+import { resolveAuthButtonComponent } from './components';
+import type { AuthButtonComponent, AuthEndpointConfig, AuthJsonResponse } from './types';
 import { arrayBufferToBase64url, base64urlToArrayBuffer, getCsrfToken, isAbortError } from './webauthn-utils';
 
 interface PasskeyLoginButtonProps {
   endpoints?: AuthEndpointConfig;
+  components?: { Button: AuthButtonComponent };
   className?: string;
   onSuccess?: (redirectUrl: string, result: AuthJsonResponse) => void;
   onError?: (message: string) => void;
 }
 
-export function PasskeyLoginButton({ endpoints = {}, className, onSuccess, onError }: PasskeyLoginButtonProps) {
+export function PasskeyLoginButton({ endpoints = {}, components, className, onSuccess, onError }: PasskeyLoginButtonProps) {
+  const { Button } = resolveAuthButtonComponent(components);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 

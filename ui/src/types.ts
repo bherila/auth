@@ -1,3 +1,5 @@
+import type * as React from 'react';
+
 export interface AuthEndpointConfig {
   csrfToken?: string;
   login?: string;
@@ -27,3 +29,27 @@ export interface AuthJsonResponse {
   redirect?: string;
   [key: string]: unknown;
 }
+
+export type AuthButtonComponentProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: string;
+  size?: string;
+};
+
+export type AuthInputComponentProps = React.InputHTMLAttributes<HTMLInputElement>;
+export type AuthLabelComponentProps = React.LabelHTMLAttributes<HTMLLabelElement>;
+export type AuthContainerComponentProps = React.HTMLAttributes<HTMLDivElement>;
+
+export interface AuthComponentSet {
+  Button: React.ComponentType<AuthButtonComponentProps>;
+  Card: React.ComponentType<AuthContainerComponentProps>;
+  CardContent: React.ComponentType<AuthContainerComponentProps>;
+  CardDescription: React.ComponentType<AuthContainerComponentProps>;
+  CardHeader: React.ComponentType<AuthContainerComponentProps>;
+  CardTitle: React.ComponentType<AuthContainerComponentProps>;
+  Input: React.ComponentType<AuthInputComponentProps>;
+  Label: React.ComponentType<AuthLabelComponentProps>;
+}
+
+export type AuthComponents = AuthComponentSet;
+export type AuthComponentOverrides = Partial<AuthComponentSet>;
+export type AuthButtonComponent = AuthComponentSet['Button'];

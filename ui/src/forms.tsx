@@ -1,11 +1,12 @@
 import * as React from 'react';
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from 'bwh-ui';
 
-import type { AuthEndpointConfig, AuthJsonResponse } from './types';
+import { resolveAuthComponents } from './components';
+import type { AuthComponentOverrides, AuthEndpointConfig, AuthJsonResponse } from './types';
 import { getCsrfToken } from './webauthn-utils';
 
 interface AuthFormProps {
   endpoints?: AuthEndpointConfig;
+  components?: AuthComponentOverrides;
   onSuccess?: (result: AuthJsonResponse) => void;
   onError?: (message: string) => void;
 }
@@ -29,7 +30,8 @@ async function postForm(url: string, body: Record<string, unknown>, csrfToken?: 
   return result;
 }
 
-export function LoginForm({ endpoints = {}, onSuccess, onError }: AuthFormProps) {
+export function LoginForm({ endpoints = {}, components, onSuccess, onError }: AuthFormProps) {
+  const { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [remember, setRemember] = React.useState(false);
@@ -76,7 +78,8 @@ export function LoginForm({ endpoints = {}, onSuccess, onError }: AuthFormProps)
   );
 }
 
-export function SignupForm({ endpoints = {}, onSuccess, onError }: AuthFormProps) {
+export function SignupForm({ endpoints = {}, components, onSuccess, onError }: AuthFormProps) {
+  const { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -133,7 +136,8 @@ export function SignupForm({ endpoints = {}, onSuccess, onError }: AuthFormProps
   );
 }
 
-export function PasswordResetRequestForm({ endpoints = {}, onSuccess, onError }: AuthFormProps) {
+export function PasswordResetRequestForm({ endpoints = {}, components, onSuccess, onError }: AuthFormProps) {
+  const { Button, Input, Label } = resolveAuthComponents(components);
   const [email, setEmail] = React.useState('');
   const [loading, setLoading] = React.useState(false);
 
@@ -162,7 +166,8 @@ export function PasswordResetRequestForm({ endpoints = {}, onSuccess, onError }:
   );
 }
 
-export function ResetPasswordForm({ endpoints = {}, onSuccess, onError }: AuthFormProps) {
+export function ResetPasswordForm({ endpoints = {}, components, onSuccess, onError }: AuthFormProps) {
+  const { Button, Input, Label } = resolveAuthComponents(components);
   const [email, setEmail] = React.useState('');
   const [token, setToken] = React.useState('');
   const [password, setPassword] = React.useState('');

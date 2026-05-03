@@ -1,13 +1,14 @@
 import { Key, Plus, Trash2 } from 'lucide-react';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from 'bwh-ui';
 
-import type { AuthEndpointConfig, Passkey } from './types';
+import { resolveAuthComponents } from './components';
+import type { AuthComponentOverrides, AuthEndpointConfig, Passkey } from './types';
 import { arrayBufferToBase64url, base64urlToArrayBuffer, getCsrfToken, isAbortError } from './webauthn-utils';
 
 interface PasskeySectionProps {
   endpoints?: AuthEndpointConfig;
+  components?: AuthComponentOverrides;
   onSuccess?: (message: string) => void;
   onError?: (field: string, message: string) => void;
 }
@@ -31,7 +32,8 @@ function getDeviceName(): string {
   return `Passkey (${browser} on ${os})`;
 }
 
-export function PasskeySection({ endpoints = {}, onSuccess, onError }: PasskeySectionProps) {
+export function PasskeySection({ endpoints = {}, components, onSuccess, onError }: PasskeySectionProps) {
+  const { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
   const [passkeys, setPasskeys] = React.useState<Passkey[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [registering, setRegistering] = React.useState(false);

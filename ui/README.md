@@ -1,8 +1,9 @@
 # bwh-auth
 
-Shared React auth components for BWH applications.
+Shared headless React auth components for BWH applications.
 
-This package owns auth-specific UI and browser helpers. Generic primitives come from `bwh-ui`.
+This package owns auth-specific behavior and browser helpers. It does not import
+or bundle a UI kit. Consumers must inject their own UI components.
 
 ## Components
 
@@ -12,6 +13,34 @@ This package owns auth-specific UI and browser helpers. Generic primitives come 
 - `ResetPasswordForm`
 - `PasskeyLoginButton`
 - `PasskeySection`
+
+## Component Injection
+
+Higher-level components require injected components so each app can use its own
+shadcn/Base UI components and Vite can tree-shake cleanly.
+
+```tsx
+import { LoginForm, type AuthComponents } from "bwh-auth"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+
+const authComponents = {
+  Button,
+  Card,
+  CardContent,
+  CardDescription: ({ ...props }) => <div {...props} />,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+} satisfies AuthComponents
+
+export function LoginPage() {
+  return <LoginForm components={authComponents} />
+}
+```
 
 ## Endpoint Defaults
 
