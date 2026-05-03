@@ -1,8 +1,8 @@
 <?php
 
-namespace Bherila\AuthLaravel\Services;
+namespace BWH\Auth\Services;
 
-use Bherila\AuthLaravel\Contracts\AuthUserPolicy;
+use BWH\Auth\Contracts\AuthUserPolicy;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 

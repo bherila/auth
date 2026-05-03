@@ -1,8 +1,8 @@
 <?php
 
-namespace Bherila\AuthLaravel\Events;
+namespace BWH\Auth\Events;
 
-use Bherila\AuthLaravel\Models\PasskeyCredential;
+use BWH\Auth\Models\PasskeyCredential;
 use Illuminate\Contracts\Auth\Authenticatable;
 
 class PasskeyDeleted

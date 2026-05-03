@@ -11,6 +11,7 @@ or bundle a UI kit. Consumers must inject their own UI components.
 - `SignupForm`
 - `PasswordResetRequestForm`
 - `ResetPasswordForm`
+- `TwoFactorForm`
 - `PasskeyLoginButton`
 - `PasskeySection`
 
@@ -74,6 +75,14 @@ export function LoginPage() {
 ```
 
 ## Endpoint Defaults
+
+Auth forms default to the Laravel package API routes where the Laravel package owns the endpoint:
+
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
+- `POST /api/auth/two-factor/verify`
+- `POST /api/auth/two-factor/resend`
+- `POST /api/auth/two-factor/report/:token`
 
 Passkey components default to the Laravel package routes:
 

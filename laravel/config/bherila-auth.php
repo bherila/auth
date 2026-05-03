@@ -7,6 +7,27 @@ return [
         'middleware' => ['web'],
     ],
 
+    'migrations' => [
+        'drop_tables_on_rollback' => false,
+    ],
+
+    'password_resets' => [
+        'reset_url' => env('BHERILA_AUTH_PASSWORD_RESET_URL', env('APP_URL', '').'/reset-password/{token}?email={email}'),
+        'redirect_after_reset' => env('BHERILA_AUTH_PASSWORD_RESET_REDIRECT', '/'),
+        'mail_subject' => 'Reset your :app password',
+        'notice_subject' => 'Your :app password was changed',
+    ],
+
+    'two_factor' => [
+        'table' => 'auth_two_factor_attempts',
+        'expires_minutes' => 15,
+        'allow_test_code' => env('BHERILA_AUTH_ALLOW_TEST_2FA_CODE', env('APP_ENV') !== 'production'),
+        'test_code' => '999999',
+        'mail_subject' => 'Verify your login - :app',
+        'session_user_key' => 'bherila_auth_2fa_user_id',
+        'session_remember_key' => 'bherila_auth_2fa_remember',
+    ],
+
     'passkeys' => [
         'table' => 'auth_passkeys',
         'rp_name' => env('WEBAUTHN_RP_NAME', env('APP_NAME', 'App')),

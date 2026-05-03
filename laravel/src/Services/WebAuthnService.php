@@ -1,8 +1,8 @@
 <?php
 
-namespace Bherila\AuthLaravel\Services;
+namespace BWH\Auth\Services;
 
-use Bherila\AuthLaravel\Models\PasskeyCredential;
+use BWH\Auth\Models\PasskeyCredential;
 use Cose\Algorithm\Signature\ECDSA\ES256;
 use Cose\Algorithm\Signature\RSA\RS256;
 use Illuminate\Contracts\Auth\Authenticatable;

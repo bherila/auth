@@ -20,7 +20,7 @@
   },
   "autoload": {
     "psr-4": {
-      "BWH\\Auth\\": "src/"
+      "BWH\\Auth\\": "laravel/src/"
     }
   },
   "extra": {

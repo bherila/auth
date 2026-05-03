@@ -1,15 +1,15 @@
 <?php
 
-namespace Bherila\AuthLaravel\Http\Controllers;
+namespace BWH\Auth\Http\Controllers;
 
-use Bherila\AuthLaravel\Contracts\AuthAuditLogger;
-use Bherila\AuthLaravel\Contracts\AuthUserPolicy;
-use Bherila\AuthLaravel\Events\PasskeyDeleted;
-use Bherila\AuthLaravel\Events\PasskeyLoginFailed;
-use Bherila\AuthLaravel\Events\PasskeyLoginSucceeded;
-use Bherila\AuthLaravel\Events\PasskeyRegistered;
-use Bherila\AuthLaravel\Models\PasskeyCredential;
-use Bherila\AuthLaravel\Services\WebAuthnService;
+use BWH\Auth\Contracts\AuthAuditLogger;
+use BWH\Auth\Contracts\AuthUserPolicy;
+use BWH\Auth\Events\PasskeyDeleted;
+use BWH\Auth\Events\PasskeyLoginFailed;
+use BWH\Auth\Events\PasskeyLoginSucceeded;
+use BWH\Auth\Events\PasskeyRegistered;
+use BWH\Auth\Models\PasskeyCredential;
+use BWH\Auth\Services\WebAuthnService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

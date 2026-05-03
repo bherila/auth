@@ -1,6 +1,6 @@
 <?php
 
-use Bherila\AuthLaravel\Http\Controllers\PasskeyController;
+use BWH\Auth\Http\Controllers\PasskeyController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth')->group(function () {

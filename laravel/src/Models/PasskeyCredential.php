@@ -1,6 +1,6 @@
 <?php
 
-namespace Bherila\AuthLaravel\Models;
+namespace BWH\Auth\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

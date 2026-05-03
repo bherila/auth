@@ -1,6 +1,6 @@
 <?php
 
-namespace Bherila\AuthLaravel\Events;
+namespace BWH\Auth\Events;
 
 class PasskeyLoginFailed
 {

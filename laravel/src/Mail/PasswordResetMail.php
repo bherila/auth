@@ -1,28 +1,7 @@
 <?php
 
-namespace Bherila\AuthLaravel\Mail;
+namespace BWH\Auth\Mail;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Mail\Mailable;
-use Illuminate\Queue\SerializesModels;
-
-class PasswordResetMail extends Mailable
+class PasswordResetMail extends PasswordResetConfirmationMail
 {
-    use Queueable;
-    use SerializesModels;
-
-    public function __construct(
-        public readonly string $resetUrl,
-        public readonly string $appName,
-    ) {}
-
-    public function build(): self
-    {
-        return $this
-            ->subject("Reset your {$this->appName} password")
-            ->view('bherila-auth::emails.password-reset', [
-                'resetUrl' => $this->resetUrl,
-                'appName' => $this->appName,
-            ]);
-    }
 }

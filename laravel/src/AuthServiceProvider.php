@@ -1,11 +1,11 @@
 <?php
 
-namespace Bherila\AuthLaravel;
+namespace BWH\Auth;
 
-use Bherila\AuthLaravel\Contracts\AuthAuditLogger;
-use Bherila\AuthLaravel\Contracts\AuthUserPolicy;
-use Bherila\AuthLaravel\Services\DefaultAuthUserPolicy;
-use Bherila\AuthLaravel\Services\NullAuthAuditLogger;
+use BWH\Auth\Contracts\AuthAuditLogger;
+use BWH\Auth\Contracts\AuthUserPolicy;
+use BWH\Auth\Services\DefaultAuthUserPolicy;
+use BWH\Auth\Services\NullAuthAuditLogger;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -31,10 +31,18 @@ class AuthServiceProvider extends ServiceProvider
             __DIR__.'/../database/migrations' => database_path('migrations'),
         ], 'bherila-auth-migrations');
 
+        $this->publishes([
+            __DIR__.'/../resources/views' => resource_path('views/vendor/bherila-auth'),
+        ], 'bherila-auth-views');
+
         if (config('bherila-auth.routes.enabled', true)) {
             Route::prefix(config('bherila-auth.routes.prefix', 'api'))
                 ->middleware(config('bherila-auth.routes.middleware', ['web']))
                 ->group(__DIR__.'/../routes/passkeys.php');
+
+            Route::prefix(config('bherila-auth.routes.prefix', 'api'))
+                ->middleware(config('bherila-auth.routes.middleware', ['web']))
+                ->group(__DIR__.'/../routes/auth.php');
         }
     }
 }

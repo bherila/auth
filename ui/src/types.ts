@@ -6,6 +6,9 @@ export interface AuthEndpointConfig {
   signup?: string;
   forgotPassword?: string;
   resetPassword?: string;
+  twoFactorVerify?: string;
+  twoFactorResend?: string;
+  twoFactorReport?: (token: string) => string;
   passkeyList?: string;
   passkeyRegisterOptions?: string;
   passkeyRegister?: string;
@@ -27,6 +30,8 @@ export interface AuthJsonResponse {
   message?: string;
   error?: string;
   redirect?: string;
+  requires_2fa?: boolean;
+  attempt_token?: string;
   [key: string]: unknown;
 }
 

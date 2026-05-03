@@ -1,6 +1,6 @@
 <?php
 
-namespace Bherila\AuthLaravel\Contracts;
+namespace BWH\Auth\Contracts;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
