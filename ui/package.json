@@ -24,16 +24,16 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@base-ui-components/react": "^1.0.0-rc.0",
+    "@base-ui/react": "^1.4.1",
     "bwh-ui": "^0.1.0",
-    "lucide-react": "^0.468.0 || ^0.500.0",
+    "lucide-react": "^1.14.0",
     "react": "^18.3.0 || ^19.0.0",
     "react-dom": "^18.3.0 || ^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^1.14.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsup": "^8.3.0",
