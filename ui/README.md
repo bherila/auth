@@ -20,25 +20,30 @@ Higher-level components require injected components so each app can use its own
 shadcn/Base UI components and Vite can tree-shake cleanly.
 
 ```tsx
-import { LoginForm, type AuthComponents } from "bwh-auth"
+import { LoginForm, type AuthComponentInput } from "bwh-auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-const authComponents = {
-  Button,
-  Card,
-  CardContent,
-  CardDescription: ({ ...props }) => <div {...props} />,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-} satisfies AuthComponents
+export function getShadcnComponents() {
+  return {
+    Button,
+    Card,
+    CardContent,
+    CardDescription: ({ ...props }) => <div {...props} />,
+    CardHeader,
+    CardTitle,
+    Input,
+    Label,
+    // Extra keys are allowed so this helper can be shared across features.
+    Textarea,
+    Dialog,
+  } satisfies AuthComponentInput
+}
 
 export function LoginPage() {
-  return <LoginForm components={authComponents} />
+  return <LoginForm components={getShadcnComponents()} />
 }
 ```
 

@@ -1,12 +1,12 @@
 import * as React from 'react';
 
 import { resolveAuthComponents } from './components';
-import type { AuthComponentOverrides, AuthEndpointConfig, AuthJsonResponse } from './types';
+import type { AuthComponentInput, AuthEndpointConfig, AuthJsonResponse } from './types';
 import { getCsrfToken } from './webauthn-utils';
 
 interface AuthFormProps {
   endpoints?: AuthEndpointConfig;
-  components?: AuthComponentOverrides;
+  components: AuthComponentInput;
   onSuccess?: (result: AuthJsonResponse) => void;
   onError?: (message: string) => void;
 }

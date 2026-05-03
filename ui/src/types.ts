@@ -53,3 +53,6 @@ export interface AuthComponentSet {
 export type AuthComponents = AuthComponentSet;
 export type AuthComponentOverrides = Partial<AuthComponentSet>;
 export type AuthButtonComponent = AuthComponentSet['Button'];
+export type AuthComponentSuperset = AuthComponentSet & Record<string, React.ComponentType<any>>;
+export type AuthComponentInput = AuthComponentSet | AuthComponentSuperset;
+export type AuthButtonComponentInput = Pick<AuthComponentSet, 'Button'> & Record<string, React.ComponentType<any>>;

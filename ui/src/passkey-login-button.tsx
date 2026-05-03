@@ -2,12 +2,12 @@ import { KeyRound } from 'lucide-react';
 import * as React from 'react';
 
 import { resolveAuthButtonComponent } from './components';
-import type { AuthButtonComponent, AuthEndpointConfig, AuthJsonResponse } from './types';
+import type { AuthButtonComponentInput, AuthEndpointConfig, AuthJsonResponse } from './types';
 import { arrayBufferToBase64url, base64urlToArrayBuffer, getCsrfToken, isAbortError } from './webauthn-utils';
 
 interface PasskeyLoginButtonProps {
   endpoints?: AuthEndpointConfig;
-  components?: { Button: AuthButtonComponent };
+  components: AuthButtonComponentInput;
   className?: string;
   onSuccess?: (redirectUrl: string, result: AuthJsonResponse) => void;
   onError?: (message: string) => void;

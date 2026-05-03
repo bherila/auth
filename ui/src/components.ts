@@ -1,4 +1,4 @@
-import type { AuthButtonComponent, AuthComponentOverrides, AuthComponentSet } from './types';
+import type { AuthButtonComponentInput, AuthComponentInput, AuthComponentSet } from './types';
 
 const requiredComponentKeys: Array<keyof AuthComponentSet> = [
   'Button',
@@ -11,7 +11,7 @@ const requiredComponentKeys: Array<keyof AuthComponentSet> = [
   'Label',
 ];
 
-export function resolveAuthComponents(components?: AuthComponentOverrides): AuthComponentSet {
+export function resolveAuthComponents(components?: AuthComponentInput): AuthComponentSet {
   const missing = requiredComponentKeys.filter((key) => !components?.[key]);
 
   if (missing.length > 0) {
@@ -21,7 +21,7 @@ export function resolveAuthComponents(components?: AuthComponentOverrides): Auth
   return components as AuthComponentSet;
 }
 
-export function resolveAuthButtonComponent(components?: { Button?: AuthButtonComponent }): Pick<AuthComponentSet, 'Button'> {
+export function resolveAuthButtonComponent(components?: AuthButtonComponentInput): Pick<AuthComponentSet, 'Button'> {
   if (!components?.Button) {
     throw new Error('bwh-auth requires an injected Button component');
   }

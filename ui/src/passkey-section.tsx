@@ -3,12 +3,12 @@ import * as React from 'react';
 import { flushSync } from 'react-dom';
 
 import { resolveAuthComponents } from './components';
-import type { AuthComponentOverrides, AuthEndpointConfig, Passkey } from './types';
+import type { AuthComponentInput, AuthEndpointConfig, Passkey } from './types';
 import { arrayBufferToBase64url, base64urlToArrayBuffer, getCsrfToken, isAbortError } from './webauthn-utils';
 
 interface PasskeySectionProps {
   endpoints?: AuthEndpointConfig;
-  components?: AuthComponentOverrides;
+  components: AuthComponentInput;
   onSuccess?: (message: string) => void;
   onError?: (field: string, message: string) => void;
 }
