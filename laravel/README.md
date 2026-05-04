@@ -38,7 +38,7 @@ If installing from GitHub before Packagist publication, add the repository to th
 }
 ```
 
-Then run `composer require bherila/auth-laravel:*`. Composer reads the repository-root `composer.json`, which autoloads the Laravel package from `laravel/src`.
+Then run `composer require bherila/auth-laravel:dev-main`. Composer reads the repository-root `composer.json`, which autoloads the Laravel package from `laravel/src`.
 
 ## Configuration
 
@@ -71,9 +71,15 @@ With the default prefix, the package registers:
 - `POST /api/passkeys/auth/options`
 - `POST /api/passkeys/auth`
 
+## Ownership boundary
+
+This package owns Laravel services, API routes, database migrations, controllers, and auth mailables. It intentionally does not ship application page Blade wrappers or Vite entrypoints. Each consuming app should create its own Blade pages and Vite entrypoints, then mount the shared `bwh-auth` React components where useful.
+
+The package does include Markdown Blade templates for its mailables under `bherila-auth::emails.*`. Those are email templates, not page wrappers, and can be published/overridden with `php artisan vendor:publish --tag=bherila-auth-views`.
+
 ## Password reset integration
 
-The package owns the JSON API endpoints and mailables. The consuming app owns the pages.
+The package owns the JSON API endpoints and mailables. The consuming app owns the pages, including Blade wrappers and Vite entrypoints.
 
 Create pages such as `/forgot-password` and `/reset-password/{token}` and mount the shared `bwh-auth` UI components from `auth/ui`:
 
@@ -113,7 +119,7 @@ return response()->json([
 ]);
 ```
 
-The consuming app also owns the 2FA page wrapper, for example `/login/two-factor/{token}`:
+The consuming app also owns the 2FA page wrapper and Vite entrypoint, for example `/login/two-factor/{token}`:
 
 ```tsx
 import { TwoFactorForm } from 'bwh-auth';

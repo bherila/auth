@@ -2,8 +2,12 @@
 
 Shared headless React auth components for BWH applications.
 
-This package owns auth-specific behavior and browser helpers. It does not import
-or bundle a UI kit. Consumers must inject their own UI components.
+This package owns auth-specific React behavior and browser helpers. It does not import
+or bundle a UI kit, Blade page wrappers, or application Vite entrypoints. Consumers must inject their own UI components and mount these components from app-owned pages/entrypoints.
+
+## Ownership boundary
+
+`bwh-auth` exports React components only. Laravel apps should keep their own Blade files such as `resources/views/auth/login.blade.php` and Vite entrypoints such as `resources/js/auth/login.tsx`; those app files import and mount these shared components.
 
 ## Components
 
@@ -72,6 +76,26 @@ export function getShadcnComponents() {
 export function LoginPage() {
   return <LoginForm components={getShadcnComponents()} />
 }
+```
+
+## Custom Signup Fields
+
+`SignupForm` is field-driven so apps can keep app-specific registration concepts, such as invite codes or policy checkboxes, while reusing the shared auth form behavior.
+
+```tsx
+<SignupForm
+  components={getShadcnComponents()}
+  submitMode="native"
+  fields={[
+    { name: 'first_name', label: 'First Name', required: true, autoComplete: 'given-name' },
+    { name: 'last_name', label: 'Last Name', required: true, autoComplete: 'family-name' },
+    { name: 'email', label: 'Email', type: 'email', required: true, autoComplete: 'email' },
+    { name: 'password', label: 'Password', type: 'password', required: true, minLength: 8, autoComplete: 'new-password' },
+    { name: 'password_confirmation', label: 'Confirm Password', type: 'password', required: true, minLength: 8, autoComplete: 'new-password' },
+    { name: 'invite_code', label: 'Season Invite Code', required: true },
+    { name: 'agreement', label: 'I agree to keep this program confidential.', type: 'checkbox', required: true },
+  ]}
+/>
 ```
 
 ## Endpoint Defaults

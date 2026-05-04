@@ -17,6 +17,24 @@ export interface AuthEndpointConfig {
   passkeyAuth?: string;
 }
 
+
+export interface AuthSignupField {
+  name: string;
+  label: React.ReactNode;
+  type?: React.HTMLInputTypeAttribute;
+  placeholder?: string;
+  required?: boolean;
+  autoComplete?: string;
+  initialValue?: string | boolean;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
+  helpText?: React.ReactNode;
+  className?: string;
+  containerClassName?: string;
+}
+
 export interface Passkey {
   id: number;
   name: string;
@@ -35,9 +53,12 @@ export interface AuthJsonResponse {
   [key: string]: unknown;
 }
 
+export type AuthButtonVariant = 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
+export type AuthButtonSize = 'default' | 'sm' | 'lg' | 'icon' | 'icon-sm' | 'icon-lg';
+
 export type AuthButtonComponentProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: string;
-  size?: string;
+  variant?: AuthButtonVariant;
+  size?: AuthButtonSize;
 };
 
 export type AuthInputComponentProps = React.InputHTMLAttributes<HTMLInputElement>;

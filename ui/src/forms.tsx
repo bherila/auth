@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 import { resolveAuthComponents } from './components';
-import type { AuthComponentInput, AuthEndpointConfig, AuthJsonResponse } from './types';
+import type { AuthComponentInput, AuthEndpointConfig, AuthJsonResponse, AuthSignupField } from './types';
 import { getCsrfToken } from './webauthn-utils';
 
 interface AuthFormProps {
@@ -13,6 +13,17 @@ interface AuthFormProps {
 
 interface LoginFormProps extends AuthFormProps {
   onTwoFactorRequired?: (result: AuthJsonResponse & { attempt_token?: string }) => void;
+}
+
+interface SignupFormProps extends AuthFormProps {
+  fields?: AuthSignupField[];
+  initialValues?: Record<string, string | boolean>;
+  errors?: Record<string, string[]>;
+  submitMode?: 'fetch' | 'native';
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+  submitLabel?: React.ReactNode;
+  submittingLabel?: React.ReactNode;
 }
 
 interface ResetPasswordFormProps extends AuthFormProps {
@@ -101,25 +112,52 @@ export function LoginForm({ endpoints = {}, components, onSuccess, onError, onTw
   );
 }
 
-export function SignupForm({ endpoints = {}, components, onSuccess, onError }: AuthFormProps) {
-  const { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
-  const [name, setName] = React.useState('');
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
-  const [passwordConfirmation, setPasswordConfirmation] = React.useState('');
+function defaultSignupFields(): AuthSignupField[] {
+  return [
+    { name: 'name', label: 'Name', required: true, autoComplete: 'name' },
+    { name: 'email', label: 'Email', type: 'email', required: true, autoComplete: 'email' },
+    { name: 'password', label: 'Password', type: 'password', required: true, autoComplete: 'new-password' },
+    { name: 'password_confirmation', label: 'Confirm Password', type: 'password', required: true, autoComplete: 'new-password' },
+  ];
+}
+
+function initialSignupValue(field: AuthSignupField, initialValues: Record<string, string | boolean>): string | boolean {
+  if (Object.prototype.hasOwnProperty.call(initialValues, field.name)) return initialValues[field.name];
+  if (field.initialValue !== undefined) return field.initialValue;
+  return field.type === 'checkbox' ? false : '';
+}
+
+export function SignupForm({
+  endpoints = {},
+  components,
+  onSuccess,
+  onError,
+  fields = defaultSignupFields(),
+  initialValues = {},
+  errors = {},
+  submitMode = 'fetch',
+  title = 'Create Account',
+  description,
+  submitLabel = 'Create Account',
+  submittingLabel = 'Creating account...',
+}: SignupFormProps) {
+  const { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
+  const [values, setValues] = React.useState<Record<string, string | boolean>>(() => Object.fromEntries(
+    fields.map((field) => [field.name, initialSignupValue(field, initialValues)]),
+  ));
   const [loading, setLoading] = React.useState(false);
 
   async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
     setLoading(true);
 
+    if (submitMode === 'native') {
+      return;
+    }
+
+    event.preventDefault();
+
     try {
-      const result = await postForm(endpoints.signup ?? '/register', {
-        name,
-        email,
-        password,
-        password_confirmation: passwordConfirmation,
-      }, endpoints.csrfToken);
+      const result = await postForm(endpoints.signup ?? '/register', values, endpoints.csrfToken);
       onSuccess?.(result);
       if (!onSuccess && result.redirect) window.location.href = result.redirect;
     } catch (error: unknown) {
@@ -129,30 +167,69 @@ export function SignupForm({ endpoints = {}, components, onSuccess, onError }: A
     }
   }
 
+  function setValue(name: string, value: string | boolean) {
+    setValues((current) => ({ ...current, [name]: value }));
+  }
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Create Account</CardTitle>
+        <CardTitle>{title}</CardTitle>
+        {description ? <CardDescription>{description}</CardDescription> : null}
       </CardHeader>
       <CardContent>
-        <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
-          <div className="space-y-1">
-            <Label htmlFor="signup-name">Name</Label>
-            <Input id="signup-name" autoComplete="name" required value={name} onChange={(event) => setName(event.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="signup-email">Email</Label>
-            <Input id="signup-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="signup-password">Password</Label>
-            <Input id="signup-password" type="password" autoComplete="new-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="signup-password-confirmation">Confirm Password</Label>
-            <Input id="signup-password-confirmation" type="password" autoComplete="new-password" required value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} />
-          </div>
-          <Button type="submit" className="w-full" disabled={loading}>{loading ? 'Creating account...' : 'Create Account'}</Button>
+        <form className="space-y-4" method={submitMode === 'native' ? 'POST' : undefined} action={endpoints.signup ?? '/register'} onSubmit={(event) => void onSubmit(event)}>
+          {submitMode === 'native' ? <input type="hidden" name="_token" value={getCsrfToken(endpoints.csrfToken)} /> : null}
+          {fields.map((field) => {
+            const error = errors[field.name]?.[0];
+            const value = values[field.name];
+
+            if (field.type === 'checkbox') {
+              return (
+                <div className={field.containerClassName ?? 'space-y-1'} key={field.name}>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      id={`signup-${field.name}`}
+                      name={field.name}
+                      type="checkbox"
+                      value="1"
+                      checked={Boolean(value)}
+                      onChange={(event) => setValue(field.name, event.target.checked)}
+                      required={field.required}
+                    />
+                    <span>{field.label}</span>
+                  </label>
+                  {field.helpText ? <p className="text-xs text-muted-foreground">{field.helpText}</p> : null}
+                  {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                </div>
+              );
+            }
+
+            return (
+              <div className={field.containerClassName ?? 'space-y-1'} key={field.name}>
+                <Label htmlFor={`signup-${field.name}`}>{field.label}</Label>
+                <Input
+                  id={`signup-${field.name}`}
+                  name={field.name}
+                  type={field.type ?? 'text'}
+                  placeholder={field.placeholder}
+                  required={field.required}
+                  autoComplete={field.autoComplete}
+                  minLength={field.minLength}
+                  maxLength={field.maxLength}
+                  pattern={field.pattern}
+                  inputMode={field.inputMode}
+                  className={field.className}
+                  aria-invalid={Boolean(error)}
+                  value={String(value ?? '')}
+                  onChange={(event) => setValue(field.name, event.target.value)}
+                />
+                {field.helpText ? <p className="text-xs text-muted-foreground">{field.helpText}</p> : null}
+                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              </div>
+            );
+          })}
+          <Button type="submit" className="w-full" disabled={loading}>{loading ? submittingLabel : submitLabel}</Button>
         </form>
       </CardContent>
     </Card>
