@@ -6,6 +6,7 @@ export interface AuthEndpointConfig {
   signup?: string;
   forgotPassword?: string;
   resetPassword?: string;
+  changePassword?: string;
   twoFactorVerify?: string;
   twoFactorResend?: string;
   twoFactorReport?: (token: string) => string;

@@ -6,7 +6,7 @@ Includes:
 
 - WebAuthn/passkey registration and login
 - email-code 2FA challenge service, API routes, and mailables
-- password reset request/reset API routes and mailables
+- password reset request/reset/change API routes and mailables
 - passkey and 2FA database tables
 - policy and audit contracts for app-specific behavior
 
@@ -18,6 +18,8 @@ php artisan vendor:publish --tag=bherila-auth-config
 php artisan vendor:publish --tag=bherila-auth-migrations
 php artisan migrate
 ```
+
+Routes are auto-registered by `BWH\\Auth\\AuthServiceProvider`; consuming apps should not copy or publish package route files. Publishable assets are limited to config, migrations, and optional mail views.
 
 Publish mail views only if the consuming app wants to customize the package email templates:
 
@@ -60,6 +62,7 @@ With the default prefix, the package registers:
 
 - `POST /api/auth/forgot-password`
 - `POST /api/auth/reset-password`
+- `POST /api/change-password`
 - `POST /api/auth/two-factor/verify`
 - `POST /api/auth/two-factor/resend`
 - `GET /api/auth/two-factor/confirm/{token}`
@@ -98,6 +101,12 @@ export function ResetPasswordPage({ token, email }: { token: string; email: stri
 
 The reset email uses `password_resets.reset_url`. Set `BHERILA_AUTH_PASSWORD_RESET_URL` when the app uses a different route shape.
 
+## Authenticated password change
+
+The package registers `POST /api/change-password` behind `auth` middleware. It expects `current_password`, `password`, and `password_confirmation`, updates the authenticated user's password, sends `PasswordResetNoticeMail`, and returns JSON suitable for `bwh-auth`'s `ChangePasswordForm`.
+
+The consuming app owns where this appears, such as an account settings page or dialog.
+
 ## Email 2FA integration
 
 The package intentionally does not own password credential login because each app has different user approval, lockout, and onboarding rules. After the consuming app verifies email/password and decides the user may proceed, start a package 2FA challenge instead of logging in immediately:
@@ -134,7 +143,7 @@ export function TwoFactorPage({ token }: { token: string }) {
 
 ## Mailables
 
-Included mailables:
+Included mailables for password reset, password reset/change notices, and email 2FA:
 
 - `BWH\Auth\Mail\TwoFactorLoginMail`
 - `BWH\Auth\Mail\PasswordResetMail`

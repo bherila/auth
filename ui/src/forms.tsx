@@ -310,6 +310,83 @@ export function ResetPasswordForm({ endpoints = {}, components, onSuccess, onErr
 }
 
 
+
+export function ChangePasswordForm({ endpoints = {}, components, onSuccess, onError }: AuthFormProps) {
+  const { Button, Input, Label } = resolveAuthComponents(components);
+  const [currentPassword, setCurrentPassword] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [passwordConfirmation, setPasswordConfirmation] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+
+  async function onSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+
+    if (password !== passwordConfirmation) {
+      onError?.('New passwords do not match.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const result = await postForm(endpoints.changePassword ?? '/api/change-password', {
+        current_password: currentPassword,
+        password,
+        password_confirmation: passwordConfirmation,
+      }, endpoints.csrfToken);
+      setCurrentPassword('');
+      setPassword('');
+      setPasswordConfirmation('');
+      onSuccess?.(result);
+    } catch (error: unknown) {
+      onError?.(error instanceof Error ? error.message : 'Password change failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
+      <div className="space-y-1">
+        <Label htmlFor="current-password">Current Password</Label>
+        <Input
+          id="current-password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={currentPassword}
+          onChange={(event) => setCurrentPassword(event.target.value)}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="new-password">New Password</Label>
+        <Input
+          id="new-password"
+          type="password"
+          autoComplete="new-password"
+          minLength={8}
+          required
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="confirm-password">Confirm New Password</Label>
+        <Input
+          id="confirm-password"
+          type="password"
+          autoComplete="new-password"
+          minLength={8}
+          required
+          value={passwordConfirmation}
+          onChange={(event) => setPasswordConfirmation(event.target.value)}
+        />
+      </div>
+      <Button type="submit" disabled={loading}>{loading ? 'Changing...' : 'Change Password'}</Button>
+    </form>
+  );
+}
+
 export function TwoFactorForm({ endpoints = {}, components, attemptToken, appEnv, onSuccess, onError, onReportSuspicious }: TwoFactorFormProps) {
   const { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
   const [currentAttemptToken, setCurrentAttemptToken] = React.useState(attemptToken);

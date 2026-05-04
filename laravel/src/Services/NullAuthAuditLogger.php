@@ -27,4 +27,6 @@ class NullAuthAuditLogger implements AuthAuditLogger
     public function passwordResetRequested(Request $request, Authenticatable $user): void {}
 
     public function passwordResetCompleted(Request $request, Authenticatable $user): void {}
+
+    public function passwordChanged(Request $request, Authenticatable $user): void {}
 }

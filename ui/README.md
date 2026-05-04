@@ -15,6 +15,7 @@ or bundle a UI kit, Blade page wrappers, or application Vite entrypoints. Consum
 - `SignupForm`
 - `PasswordResetRequestForm`
 - `ResetPasswordForm`
+- `ChangePasswordForm`
 - `TwoFactorForm`
 - `PasskeyLoginButton`
 - `PasskeySection`
@@ -24,7 +25,7 @@ or bundle a UI kit, Blade page wrappers, or application Vite entrypoints. Consum
 For app CI before npm publication, use the GitHub Release tarball. This is the recommended path because the tarball includes built `dist` files and does not require CI to build this package during dependency installation.
 
 ```sh
-pnpm add https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.1/bwh-auth-0.1.1.tgz
+pnpm add https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.2/bwh-auth-0.1.2.tgz
 ```
 
 Or pin it manually in `package.json`:
@@ -32,7 +33,7 @@ Or pin it manually in `package.json`:
 ```json
 {
   "dependencies": {
-    "bwh-auth": "https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.1/bwh-auth-0.1.1.tgz"
+    "bwh-auth": "https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.2/bwh-auth-0.1.2.tgz"
   }
 }
 ```
@@ -104,12 +105,26 @@ export function LoginPage() {
 />
 ```
 
+## Password Change
+
+`ChangePasswordForm` is intended for authenticated settings pages or dialogs. The consuming app owns the wrapper and backend endpoint; the form posts to `/api/change-password` by default and accepts `endpoints.changePassword` for apps that use a different route.
+
+```tsx
+<ChangePasswordForm
+  components={getShadcnComponents()}
+  endpoints={{ csrfToken }}
+  onSuccess={() => setMessage('Password changed successfully.')}
+  onError={setError}
+/>
+```
+
 ## Endpoint Defaults
 
 Auth forms default to the Laravel package API routes where the Laravel package owns the endpoint:
 
 - `POST /api/auth/forgot-password`
 - `POST /api/auth/reset-password`
+- `POST /api/change-password`
 - `POST /api/auth/two-factor/verify`
 - `POST /api/auth/two-factor/resend`
 - `POST /api/auth/two-factor/report/:token`
