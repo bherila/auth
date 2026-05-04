@@ -3,7 +3,7 @@ import * as React from 'react';
 
 import { resolveAuthButtonComponent } from './components';
 import type { AuthButtonComponentInput, AuthEndpointConfig, AuthJsonResponse } from './types';
-import { arrayBufferToBase64url, base64urlToArrayBuffer, getCsrfToken, isAbortError } from './webauthn-utils';
+import { authenticateWithPasskey, isAbortError } from './webauthn-utils';
 
 interface PasskeyLoginButtonProps {
   endpoints?: AuthEndpointConfig;
@@ -18,70 +18,12 @@ export function PasskeyLoginButton({ endpoints = {}, components, className, onSu
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const authOptionsUrl = endpoints.passkeyAuthOptions ?? '/api/passkeys/auth/options';
-  const authUrl = endpoints.passkeyAuth ?? '/api/passkeys/auth';
-
   async function handlePasskeyLogin() {
     setError(null);
     setLoading(true);
 
     try {
-      const optRes = await fetch(authOptionsUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': getCsrfToken(endpoints.csrfToken),
-        },
-      });
-
-      if (!optRes.ok) {
-        throw new Error('Failed to get authentication options');
-      }
-
-      const options = await optRes.json();
-      const publicKey: PublicKeyCredentialRequestOptions = {
-        ...options,
-        challenge: base64urlToArrayBuffer(options.challenge),
-        allowCredentials: (options.allowCredentials || []).map((credential: { type: string; id: string }) => ({
-          ...credential,
-          id: base64urlToArrayBuffer(credential.id),
-        })),
-      };
-
-      const credential = await navigator.credentials.get({ publicKey });
-      if (!credential || credential.type !== 'public-key') {
-        throw new Error('No passkey selected');
-      }
-
-      const pkCredential = credential as PublicKeyCredential;
-      const response = pkCredential.response as AuthenticatorAssertionResponse;
-      const credentialData = {
-        id: pkCredential.id,
-        rawId: arrayBufferToBase64url(pkCredential.rawId),
-        type: pkCredential.type,
-        response: {
-          clientDataJSON: arrayBufferToBase64url(response.clientDataJSON),
-          authenticatorData: arrayBufferToBase64url(response.authenticatorData),
-          signature: arrayBufferToBase64url(response.signature),
-          userHandle: response.userHandle ? arrayBufferToBase64url(response.userHandle) : null,
-        },
-      };
-
-      const authRes = await fetch(authUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': getCsrfToken(endpoints.csrfToken),
-        },
-        body: JSON.stringify({ credential: credentialData }),
-      });
-
-      const result = await authRes.json();
-      if (!authRes.ok) {
-        throw new Error(result.error || result.message || 'Authentication failed');
-      }
-
-      const redirectUrl = result.redirect || '/';
+      const { redirectUrl, result } = await authenticateWithPasskey({ endpoints });
       if (onSuccess) {
         onSuccess(redirectUrl, result);
       } else {

@@ -105,6 +105,23 @@ export function LoginPage() {
 />
 ```
 
+## Passkey sign-in
+
+`LoginForm` can include an explicit passkey sign-in button and can opt into WebAuthn conditional UI so passkeys appear in the browser autofill menu for the email field. Conditional UI uses `PublicKeyCredential.isConditionalMediationAvailable()`, starts a conditional `navigator.credentials.get()` request, and sets the email input autocomplete to `username webauthn` when supported.
+
+```tsx
+<LoginForm
+  components={getShadcnComponents()}
+  enablePasskeys
+  enablePasskeyAutofill
+/>
+```
+
+The explicit passkey button and conditional autofill both default to the Laravel package routes:
+
+- `POST /api/passkeys/auth/options`
+- `POST /api/passkeys/auth`
+
 ## Password Change
 
 `ChangePasswordForm` is intended for authenticated settings pages or dialogs. The consuming app owns the wrapper and backend endpoint; the form posts to `/api/change-password` by default and accepts `endpoints.changePassword` for apps that use a different route.

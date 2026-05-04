@@ -1,8 +1,9 @@
 import * as React from 'react';
 
 import { resolveAuthComponents } from './components';
+import { PasskeyLoginButton } from './passkey-login-button';
 import type { AuthComponentInput, AuthEndpointConfig, AuthJsonResponse, AuthSignupField } from './types';
-import { getCsrfToken } from './webauthn-utils';
+import { authenticateWithPasskey, getCsrfToken, isAbortError, isConditionalMediationAvailable } from './webauthn-utils';
 
 interface AuthFormProps {
   endpoints?: AuthEndpointConfig;
@@ -12,7 +13,10 @@ interface AuthFormProps {
 }
 
 interface LoginFormProps extends AuthFormProps {
+  enablePasskeys?: boolean;
+  enablePasskeyAutofill?: boolean;
   onTwoFactorRequired?: (result: AuthJsonResponse & { attempt_token?: string }) => void;
+  onPasskeySuccess?: (redirectUrl: string, result: AuthJsonResponse) => void;
 }
 
 interface SignupFormProps extends AuthFormProps {
@@ -56,12 +60,68 @@ async function postForm(url: string, body: Record<string, unknown>, csrfToken?: 
   return result;
 }
 
-export function LoginForm({ endpoints = {}, components, onSuccess, onError, onTwoFactorRequired }: LoginFormProps) {
+export function LoginForm({
+  endpoints = {},
+  components,
+  onSuccess,
+  onError,
+  onTwoFactorRequired,
+  onPasskeySuccess,
+  enablePasskeys = false,
+  enablePasskeyAutofill = enablePasskeys,
+}: LoginFormProps) {
   const { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [remember, setRemember] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  const [conditionalPasskeyAvailable, setConditionalPasskeyAvailable] = React.useState(false);
+  const passkeyEndpoints = React.useMemo(() => ({
+    csrfToken: endpoints.csrfToken,
+    passkeyAuth: endpoints.passkeyAuth,
+    passkeyAuthOptions: endpoints.passkeyAuthOptions,
+  }), [endpoints.csrfToken, endpoints.passkeyAuth, endpoints.passkeyAuthOptions]);
+
+  React.useEffect(() => {
+    if (!enablePasskeyAutofill) return;
+
+    const abortController = new AbortController();
+    let active = true;
+
+    async function startConditionalPasskeyLogin() {
+      const available = await isConditionalMediationAvailable();
+      if (!available || !active) return;
+
+      setConditionalPasskeyAvailable(true);
+
+      try {
+        const { redirectUrl, result } = await authenticateWithPasskey({
+          endpoints: passkeyEndpoints,
+          mediation: 'conditional',
+          signal: abortController.signal,
+        });
+
+        if (!active) return;
+
+        if (onPasskeySuccess) {
+          onPasskeySuccess(redirectUrl, result);
+        } else {
+          window.location.href = redirectUrl;
+        }
+      } catch (error: unknown) {
+        if (!isAbortError(error) && active) {
+          onError?.(error instanceof Error ? error.message : 'Passkey login failed');
+        }
+      }
+    }
+
+    void startConditionalPasskeyLogin();
+
+    return () => {
+      active = false;
+      abortController.abort();
+    };
+  }, [enablePasskeyAutofill, onError, onPasskeySuccess, passkeyEndpoints]);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -95,7 +155,7 @@ export function LoginForm({ endpoints = {}, components, onSuccess, onError, onTw
         <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
           <div className="space-y-1">
             <Label htmlFor="login-email">Email</Label>
-            <Input id="login-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
+            <Input id="login-email" type="email" autoComplete={conditionalPasskeyAvailable ? 'username webauthn' : 'email'} required value={email} onChange={(event) => setEmail(event.target.value)} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="login-password">Password</Label>
@@ -107,6 +167,22 @@ export function LoginForm({ endpoints = {}, components, onSuccess, onError, onTw
           </label>
           <Button type="submit" className="w-full" disabled={loading}>{loading ? 'Signing in...' : 'Sign In'}</Button>
         </form>
+        {enablePasskeys ? (
+          <div className="mt-4">
+            <PasskeyLoginButton
+              components={{ Button }}
+              endpoints={endpoints}
+              onSuccess={(redirectUrl, result) => {
+                if (onPasskeySuccess) {
+                  onPasskeySuccess(redirectUrl, result);
+                } else {
+                  window.location.href = redirectUrl;
+                }
+              }}
+              onError={onError}
+            />
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -309,8 +385,6 @@ export function ResetPasswordForm({ endpoints = {}, components, onSuccess, onErr
   );
 }
 
-
-
 export function ChangePasswordForm({ endpoints = {}, components, onSuccess, onError }: AuthFormProps) {
   const { Button, Input, Label } = resolveAuthComponents(components);
   const [currentPassword, setCurrentPassword] = React.useState('');
@@ -349,38 +423,15 @@ export function ChangePasswordForm({ endpoints = {}, components, onSuccess, onEr
     <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
       <div className="space-y-1">
         <Label htmlFor="current-password">Current Password</Label>
-        <Input
-          id="current-password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={currentPassword}
-          onChange={(event) => setCurrentPassword(event.target.value)}
-        />
+        <Input id="current-password" type="password" autoComplete="current-password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
       </div>
       <div className="space-y-1">
         <Label htmlFor="new-password">New Password</Label>
-        <Input
-          id="new-password"
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          required
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
+        <Input id="new-password" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} />
       </div>
       <div className="space-y-1">
         <Label htmlFor="confirm-password">Confirm New Password</Label>
-        <Input
-          id="confirm-password"
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          required
-          value={passwordConfirmation}
-          onChange={(event) => setPasswordConfirmation(event.target.value)}
-        />
+        <Input id="confirm-password" type="password" autoComplete="new-password" minLength={8} required value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} />
       </div>
       <Button type="submit" disabled={loading}>{loading ? 'Changing...' : 'Change Password'}</Button>
     </form>
