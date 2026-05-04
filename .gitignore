@@ -4,3 +4,5 @@ ui/dist/
 laravel/vendor/
 .DS_Store
 *.log
+
+ui/release/

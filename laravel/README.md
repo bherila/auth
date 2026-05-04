@@ -50,8 +50,11 @@ Published config lives at `config/bherila-auth.php`. Important settings:
 - `routes.middleware`: defaults to `['web']` so session auth and CSRF work in Laravel/Vite apps.
 - `password_resets.reset_url`: reset-page URL generated into password reset emails. Defaults to `{APP_URL}/reset-password/{token}?email={email}`.
 - `password_resets.redirect_after_reset`: JSON redirect returned after a successful reset.
+- `BHERILA_AUTH_PASSWORD_RESET_MAIL_SUBJECT`: optional reset-link mailable subject override.
+- `BHERILA_AUTH_PASSWORD_NOTICE_MAIL_SUBJECT`: optional password reset/change notice subject override.
 - `two_factor.expires_minutes`: 2FA code expiry. Defaults to 15 minutes.
 - `two_factor.allow_test_code`: allows the configured test code outside production.
+- `BHERILA_AUTH_TWO_FACTOR_MAIL_SUBJECT`: optional email 2FA subject override.
 - `migrations.drop_tables_on_rollback`: defaults to `false` so package rollbacks do not drop existing app auth tables.
 
 The package migration uses `Schema::hasTable()` before creating its tables. This lets existing apps such as bwh-php keep an already-created passkey table without migration failure. It does not alter existing tables, so apps with older or different schemas should either point the package config at compatible tables or add an app-local migration for schema reconciliation. Rollback table drops are disabled by default to avoid deleting pre-existing auth data.
