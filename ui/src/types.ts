@@ -18,6 +18,8 @@ export interface AuthEndpointConfig {
   passkeyAuth?: string;
 }
 
+export type AuthValidationErrors = Record<string, string[]>;
+export type AuthSignupValues = Record<string, string | boolean>;
 
 export interface AuthSignupField {
   name: string;
@@ -34,6 +36,7 @@ export interface AuthSignupField {
   helpText?: React.ReactNode;
   className?: string;
   containerClassName?: string;
+  hiddenWhen?: (values: AuthSignupValues) => boolean;
 }
 
 export interface Passkey {

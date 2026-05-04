@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import { resolveAuthComponents } from './components';
 import { PasskeyLoginButton } from './passkey-login-button';
-import type { AuthComponentInput, AuthEndpointConfig, AuthJsonResponse, AuthSignupField } from './types';
+import type { AuthComponentInput, AuthEndpointConfig, AuthJsonResponse, AuthSignupField, AuthSignupValues, AuthValidationErrors } from './types';
 import { authenticateWithPasskey, getCsrfToken, isAbortError, isConditionalMediationAvailable } from './webauthn-utils';
 
 interface AuthFormProps {
@@ -19,15 +19,16 @@ interface LoginFormProps extends AuthFormProps {
   onPasskeySuccess?: (redirectUrl: string, result: AuthJsonResponse) => void;
 }
 
-interface SignupFormProps extends AuthFormProps {
+interface SignupFormProps extends Omit<AuthFormProps, 'onSuccess'> {
   fields?: AuthSignupField[];
-  initialValues?: Record<string, string | boolean>;
-  errors?: Record<string, string[]>;
+  initialValues?: AuthSignupValues;
+  errors?: AuthValidationErrors;
   submitMode?: 'fetch' | 'native';
   title?: React.ReactNode;
   description?: React.ReactNode;
   submitLabel?: React.ReactNode;
   submittingLabel?: React.ReactNode;
+  onSuccess?: (result: AuthJsonResponse, values: AuthSignupValues) => void | Promise<void>;
 }
 
 interface ResetPasswordFormProps extends AuthFormProps {
@@ -39,6 +40,13 @@ interface TwoFactorFormProps extends AuthFormProps {
   attemptToken: string;
   appEnv?: string;
   onReportSuspicious?: (result: AuthJsonResponse) => void;
+}
+
+class AuthRequestError extends Error {
+  constructor(message: string, public readonly result: AuthJsonResponse) {
+    super(message);
+    this.name = 'AuthRequestError';
+  }
 }
 
 async function postForm(url: string, body: Record<string, unknown>, csrfToken?: string): Promise<AuthJsonResponse> {
@@ -54,7 +62,7 @@ async function postForm(url: string, body: Record<string, unknown>, csrfToken?: 
   const result = await response.json();
 
   if (!response.ok) {
-    throw new Error(result.message || result.error || 'Request failed');
+    throw new AuthRequestError(result.message || result.error || 'Request failed', result);
   }
 
   return result;
@@ -197,7 +205,7 @@ function defaultSignupFields(): AuthSignupField[] {
   ];
 }
 
-function initialSignupValue(field: AuthSignupField, initialValues: Record<string, string | boolean>): string | boolean {
+function initialSignupValue(field: AuthSignupField, initialValues: AuthSignupValues): string | boolean {
   if (Object.prototype.hasOwnProperty.call(initialValues, field.name)) return initialValues[field.name];
   if (field.initialValue !== undefined) return field.initialValue;
   return field.type === 'checkbox' ? false : '';
@@ -218,9 +226,10 @@ export function SignupForm({
   submittingLabel = 'Creating account...',
 }: SignupFormProps) {
   const { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
-  const [values, setValues] = React.useState<Record<string, string | boolean>>(() => Object.fromEntries(
+  const [values, setValues] = React.useState<AuthSignupValues>(() => Object.fromEntries(
     fields.map((field) => [field.name, initialSignupValue(field, initialValues)]),
   ));
+  const [fieldErrors, setFieldErrors] = React.useState<AuthValidationErrors>(errors);
   const [loading, setLoading] = React.useState(false);
 
   async function onSubmit(event: React.FormEvent) {
@@ -231,12 +240,16 @@ export function SignupForm({
     }
 
     event.preventDefault();
+    setFieldErrors({});
 
     try {
       const result = await postForm(endpoints.signup ?? '/register', values, endpoints.csrfToken);
-      onSuccess?.(result);
+      await onSuccess?.(result, values);
       if (!onSuccess && result.redirect) window.location.href = result.redirect;
     } catch (error: unknown) {
+      if (error instanceof AuthRequestError && error.result.errors && typeof error.result.errors === 'object') {
+        setFieldErrors(error.result.errors as AuthValidationErrors);
+      }
       onError?.(error instanceof Error ? error.message : 'Signup failed');
     } finally {
       setLoading(false);
@@ -257,7 +270,9 @@ export function SignupForm({
         <form className="space-y-4" method={submitMode === 'native' ? 'POST' : undefined} action={endpoints.signup ?? '/register'} onSubmit={(event) => void onSubmit(event)}>
           {submitMode === 'native' ? <input type="hidden" name="_token" value={getCsrfToken(endpoints.csrfToken)} /> : null}
           {fields.map((field) => {
-            const error = errors[field.name]?.[0];
+            if (field.hiddenWhen?.(values)) return null;
+
+            const error = fieldErrors[field.name]?.[0];
             const value = values[field.name];
 
             if (field.type === 'checkbox') {

@@ -25,7 +25,7 @@ or bundle a UI kit, Blade page wrappers, or application Vite entrypoints. Consum
 For app CI before npm publication, use the GitHub Release tarball. This is the recommended path because the tarball includes built `dist` files and does not require CI to build this package during dependency installation.
 
 ```sh
-pnpm add https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.2/bwh-auth-0.1.2.tgz
+pnpm add https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.4/bwh-auth-0.1.4.tgz
 ```
 
 Or pin it manually in `package.json`:
@@ -33,7 +33,7 @@ Or pin it manually in `package.json`:
 ```json
 {
   "dependencies": {
-    "bwh-auth": "https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.2/bwh-auth-0.1.2.tgz"
+    "bwh-auth": "https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.4/bwh-auth-0.1.4.tgz"
   }
 }
 ```
@@ -102,6 +102,36 @@ export function LoginPage() {
     { name: 'invite_code', label: 'Season Invite Code', required: true },
     { name: 'agreement', label: 'I agree to keep this program confidential.', type: 'checkbox', required: true },
   ]}
+/>
+```
+
+Signup fields can use `hiddenWhen` for flows such as passwordless signup, where the app submits `passwordless=1` and hides password fields:
+
+```tsx
+const fields = [
+  { name: 'email', label: 'Email', type: 'email', required: true },
+  { name: 'passwordless', label: 'Use a passkey instead of a password', type: 'checkbox' },
+  { name: 'password', label: 'Password', type: 'password', required: true, hiddenWhen: (values) => Boolean(values.passwordless) },
+  { name: 'password_confirmation', label: 'Confirm Password', type: 'password', required: true, hiddenWhen: (values) => Boolean(values.passwordless) },
+]
+```
+
+For fetch-based signup flows, `onSuccess` receives both the server result and submitted values. That lets apps create the user first, then enroll a passkey through the shared WebAuthn helper:
+
+```tsx
+import { SignupForm, registerPasskey } from 'bwh-auth'
+
+<SignupForm
+  components={getShadcnComponents()}
+  submitMode="fetch"
+  fields={fields}
+  onSuccess={async (result, values) => {
+    if (values.passwordless) {
+      await registerPasskey({ endpoints: { csrfToken } })
+    }
+
+    window.location.assign(result.redirect || '/')
+  }}
 />
 ```
 
