@@ -21,12 +21,18 @@ or bundle a UI kit, Blade page wrappers, or application Vite entrypoints. Consum
 
 ## Install
 
-For app CI before npm publication, pin the package to a Git commit from the `ui` subdirectory. The package has a `prepare` script, so pnpm builds `dist` during install.
+For app CI before npm publication, use the GitHub Release tarball. This is the recommended path because the tarball includes built `dist` files and does not require CI to build this package during dependency installation.
+
+```sh
+pnpm add https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.1/bwh-auth-0.1.1.tgz
+```
+
+Or pin it manually in `package.json`:
 
 ```json
 {
   "dependencies": {
-    "bwh-auth": "git+https://github.com/bherila/auth.git#path:ui&commit=COMMIT_SHA"
+    "bwh-auth": "https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.1/bwh-auth-0.1.1.tgz"
   }
 }
 ```
@@ -36,13 +42,6 @@ When installing locally during package development, a path dependency is still u
 ```sh
 pnpm add bwh-auth@file:../auth/ui
 ```
-
-Release tarballs are also supported when we want immutable assets attached to GitHub Releases:
-
-```sh
-pnpm add https://github.com/bherila/auth/releases/download/bwh-auth-vX.Y.Z/bwh-auth-X.Y.Z.tgz
-```
-
 
 Install peer dependencies in the consuming app:
 
