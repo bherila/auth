@@ -18,6 +18,7 @@ use Webauthn\AuthenticatorAssertionResponseValidator;
 use Webauthn\AuthenticatorAttestationResponse;
 use Webauthn\AuthenticatorAttestationResponseValidator;
 use Webauthn\CeremonyStep\CeremonyStepManagerFactory;
+use Webauthn\CredentialRecord;
 use Webauthn\Denormalizer\WebauthnSerializerFactory;
 use Webauthn\PublicKeyCredential;
 use Webauthn\PublicKeyCredentialCreationOptions;
@@ -25,7 +26,6 @@ use Webauthn\PublicKeyCredentialDescriptor;
 use Webauthn\PublicKeyCredentialParameters;
 use Webauthn\PublicKeyCredentialRequestOptions;
 use Webauthn\PublicKeyCredentialRpEntity;
-use Webauthn\PublicKeyCredentialSource;
 use Webauthn\PublicKeyCredentialUserEntity;
 use Webauthn\TrustPath\EmptyTrustPath;
 
@@ -220,9 +220,9 @@ class WebAuthnService
         return $factory;
     }
 
-    private function credentialToSource(PasskeyCredential $credential, Authenticatable $user): PublicKeyCredentialSource
+    private function credentialToSource(PasskeyCredential $credential, Authenticatable $user): CredentialRecord
     {
-        return PublicKeyCredentialSource::create(
+        return CredentialRecord::create(
             publicKeyCredentialId: $this->decodeCredentialId($credential->credential_id),
             type: 'public-key',
             transports: $credential->transports ?? [],
