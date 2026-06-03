@@ -35,14 +35,23 @@ class AuthServiceProvider extends ServiceProvider
             __DIR__.'/../resources/views' => resource_path('views/vendor/bherila-auth'),
         ], 'bherila-auth-views');
 
-        if (config('bherila-auth.routes.enabled', true)) {
+        if (config('bherila-auth.routes.enabled', true) && config('bherila-auth.routes.passkeys', true)) {
             Route::prefix(config('bherila-auth.routes.prefix', 'api'))
                 ->middleware(config('bherila-auth.routes.middleware', ['web']))
                 ->group(__DIR__.'/../routes/passkeys.php');
+        }
 
+        if (config('bherila-auth.routes.enabled', true) && $this->shouldLoadAuthRoutes()) {
             Route::prefix(config('bherila-auth.routes.prefix', 'api'))
                 ->middleware(config('bherila-auth.routes.middleware', ['web']))
                 ->group(__DIR__.'/../routes/auth.php');
         }
+    }
+
+    private function shouldLoadAuthRoutes(): bool
+    {
+        return config('bherila-auth.routes.password_resets', true)
+            || config('bherila-auth.routes.change_password', true)
+            || config('bherila-auth.routes.two_factor', true);
     }
 }

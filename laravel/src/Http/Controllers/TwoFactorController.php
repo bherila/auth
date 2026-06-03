@@ -12,6 +12,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\View\View;
 
 class TwoFactorController extends Controller
 {
@@ -67,7 +68,28 @@ class TwoFactorController extends Controller
         ]);
     }
 
-    public function confirm(Request $request, string $token): JsonResponse|RedirectResponse
+    public function confirm(Request $request, string $token): JsonResponse|RedirectResponse|View
+    {
+        $attempt = TwoFactorAttempt::where('token', $token)->first();
+
+        if (! $attempt || ! $attempt->isValid()) {
+            return $this->failure($request, $attempt, 'Invalid or expired login link. Please log in again.', false);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true, 'attempt_token' => $attempt->token]);
+        }
+
+        return view('bherila-auth::two-factor-confirm', [
+            'attempt' => $attempt,
+            'token' => $token,
+            'userEmail' => $this->maskEmail((string) data_get($attempt->user, config('bherila-auth.users.email_attribute', 'email'), '')),
+            'submitRoute' => route('bherila-auth.two-factor.confirm.submit', ['token' => $token]),
+            'loginUrl' => config('bherila-auth.two_factor.login_url', '/login'),
+        ]);
+    }
+
+    public function confirmSubmit(Request $request, string $token): JsonResponse|RedirectResponse
     {
         $attempt = TwoFactorAttempt::where('token', $token)->first();
 
@@ -78,7 +100,26 @@ class TwoFactorController extends Controller
         return $this->completeLogin($request, $attempt);
     }
 
-    public function report(Request $request, string $token): JsonResponse
+    public function report(Request $request, string $token): JsonResponse|View
+    {
+        $attempt = TwoFactorAttempt::where('token', $token)->first();
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'can_report' => (bool) ($attempt && ! $attempt->is_used),
+            ]);
+        }
+
+        return view('bherila-auth::two-factor-report', [
+            'attempt' => $attempt,
+            'token' => $token,
+            'submitRoute' => route('bherila-auth.two-factor.report.submit', ['token' => $token]),
+            'loginUrl' => config('bherila-auth.two_factor.login_url', '/login'),
+        ]);
+    }
+
+    public function reportSubmit(Request $request, string $token): JsonResponse|View
     {
         $attempt = TwoFactorAttempt::where('token', $token)->first();
 
@@ -89,9 +130,16 @@ class TwoFactorController extends Controller
             }
         }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'This login attempt has been reported.',
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'This login attempt has been reported.',
+            ]);
+        }
+
+        return view('bherila-auth::two-factor-reported', [
+            'loginUrl' => config('bherila-auth.two_factor.login_url', '/login'),
+            'passwordResetUrl' => config('bherila-auth.password_resets.request_url', '/forgot-password'),
         ]);
     }
 
@@ -123,16 +171,18 @@ class TwoFactorController extends Controller
         return redirect()->to($redirect);
     }
 
-    private function failure(Request $request, ?TwoFactorAttempt $attempt, string $message): JsonResponse|RedirectResponse
+    private function failure(Request $request, ?TwoFactorAttempt $attempt, string $message, bool $audit = true): JsonResponse|RedirectResponse
     {
         $user = $attempt?->user;
-        $this->auditLogger->twoFactorLoginFailed($request, $user instanceof Authenticatable ? $user : null, $attempt, $message);
+        if ($audit) {
+            $this->auditLogger->twoFactorLoginFailed($request, $user instanceof Authenticatable ? $user : null, $attempt, $message);
+        }
 
         if ($request->expectsJson()) {
             return response()->json(['success' => false, 'message' => $message], 422);
         }
 
-        return redirect('/login')->withErrors(['code' => $message]);
+        return redirect(config('bherila-auth.two_factor.login_url', '/login'))->withErrors(['code' => $message]);
     }
 
     private function allowTestCode(TwoFactorAttempt $attempt): bool
@@ -142,5 +192,16 @@ class TwoFactorController extends Controller
         }
 
         return (bool) data_get($attempt->user, 'is_test', false);
+    }
+
+    private function maskEmail(string $email): string
+    {
+        if (! str_contains($email, '@')) {
+            return $email;
+        }
+
+        [$local, $domain] = explode('@', $email, 2);
+
+        return mb_substr($local, 0, 1).str_repeat('*', max(mb_strlen($local) - 1, 1)).'@'.$domain;
     }
 }

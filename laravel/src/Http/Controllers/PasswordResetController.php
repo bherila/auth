@@ -6,6 +6,8 @@ use BWH\Auth\Contracts\AuthAuditLogger;
 use BWH\Auth\Mail\PasswordResetConfirmationMail;
 use BWH\Auth\Mail\PasswordResetNoticeMail;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -55,10 +57,24 @@ class PasswordResetController extends Controller
 
         $resetUser = null;
         $status = Password::broker()->reset($validated, function ($user, string $password) use (&$resetUser): void {
-            $user->forceFill([
+            $attributes = [
                 'password' => Hash::make($password),
                 'remember_token' => Str::random(60),
-            ])->save();
+            ];
+
+            $forceChangeAttribute = config('bherila-auth.users.force_change_password_attribute');
+            if (is_string($forceChangeAttribute) && $forceChangeAttribute !== '' && $this->modelHasColumn($user, $forceChangeAttribute)) {
+                $attributes[$forceChangeAttribute] = false;
+            }
+
+            if ((bool) config('bherila-auth.password_resets.verify_email_on_reset', false)
+                && $user instanceof MustVerifyEmail
+                && ! $user->hasVerifiedEmail()
+                && $this->modelHasColumn($user, 'email_verified_at')) {
+                $attributes['email_verified_at'] = now();
+            }
+
+            $user->forceFill($attributes)->save();
 
             $resetUser = $user;
         });
@@ -93,5 +109,11 @@ class PasswordResetController extends Controller
             '{token}' => rawurlencode($token),
             '{email}' => rawurlencode($email),
         ]);
+    }
+
+    private function modelHasColumn(mixed $user, string $column): bool
+    {
+        return $user instanceof Model
+            && $user->getConnection()->getSchemaBuilder()->hasColumn($user->getTable(), $column);
     }
 }

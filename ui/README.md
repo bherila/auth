@@ -25,7 +25,7 @@ or bundle a UI kit, Blade page wrappers, or application Vite entrypoints. Consum
 For app CI before npm publication, use the GitHub Release tarball. This is the recommended path because the tarball includes built `dist` files and does not require CI to build this package during dependency installation.
 
 ```sh
-pnpm add https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.4/bwh-auth-0.1.4.tgz
+pnpm add https://github.com/bherila/auth/releases/download/bwh-auth-v0.2.0/bwh-auth-0.2.0.tgz
 ```
 
 Or pin it manually in `package.json`:
@@ -33,7 +33,7 @@ Or pin it manually in `package.json`:
 ```json
 {
   "dependencies": {
-    "bwh-auth": "https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.4/bwh-auth-0.1.4.tgz"
+    "bwh-auth": "https://github.com/bherila/auth/releases/download/bwh-auth-v0.2.0/bwh-auth-0.2.0.tgz"
   }
 }
 ```
@@ -47,7 +47,7 @@ pnpm add bwh-auth@file:../auth/ui
 Install peer dependencies in the consuming app:
 
 ```sh
-pnpm add @base-ui/react lucide-react react react-dom
+pnpm add lucide-react react react-dom
 ```
 
 React and React DOM are usually already present in Laravel/Vite apps.
