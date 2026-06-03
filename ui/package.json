@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "build": "tsup src/index.ts --format esm,cjs --dts --dts-resolve",
     "release": "node scripts/release.mjs",
     "typecheck": "tsc --noEmit",
     "prepare": "pnpm run build"
