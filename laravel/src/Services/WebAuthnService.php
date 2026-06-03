@@ -17,6 +17,7 @@ use Webauthn\AuthenticatorAssertionResponse;
 use Webauthn\AuthenticatorAssertionResponseValidator;
 use Webauthn\AuthenticatorAttestationResponse;
 use Webauthn\AuthenticatorAttestationResponseValidator;
+use Webauthn\AuthenticatorSelectionCriteria;
 use Webauthn\CeremonyStep\CeremonyStepManagerFactory;
 use Webauthn\CredentialRecord;
 use Webauthn\Denormalizer\WebauthnSerializerFactory;
@@ -65,6 +66,11 @@ class WebAuthnService
                 PublicKeyCredentialParameters::create('public-key', ES256::ID),
                 PublicKeyCredentialParameters::create('public-key', RS256::ID),
             ],
+            authenticatorSelection: AuthenticatorSelectionCriteria::create(
+                userVerification: $this->userVerificationRequirement(),
+                residentKey: $this->residentKeyRequirement(),
+            ),
+            attestation: 'none',
             excludeCredentials: $excludeCredentials,
             timeout: (int) config('bherila-auth.passkeys.timeout', 60000),
         );
@@ -121,7 +127,7 @@ class WebAuthnService
             challenge: random_bytes(32),
             rpId: $this->getRpId($request),
             allowCredentials: $allowCredentials,
-            userVerification: PublicKeyCredentialRequestOptions::USER_VERIFICATION_REQUIREMENT_PREFERRED,
+            userVerification: $this->userVerificationRequirement(),
             timeout: (int) config('bherila-auth.passkeys.timeout', 60000),
         );
 
@@ -142,9 +148,7 @@ class WebAuthnService
 
         $options = unserialize($serializedOptions);
         $credential = $this->deserializeCredential($credentialData);
-        $storedCredential = PasskeyCredential::query()
-            ->where('credential_id', $this->encodeCredentialId($credential->rawId))
-            ->first();
+        $storedCredential = $this->findStoredCredential($this->encodeCredentialId($credential->rawId));
 
         if (! $storedCredential) {
             throw new RuntimeException('Credential not found.');
@@ -171,6 +175,35 @@ class WebAuthnService
         ]);
 
         return [$user, $storedCredential];
+    }
+
+    private function findStoredCredential(string $encodedCredentialId): ?PasskeyCredential
+    {
+        $credential = null;
+        $probe = new PasskeyCredential();
+
+        if ($probe->hasCredentialIdHashColumn()) {
+            $credential = PasskeyCredential::query()
+                ->where('credential_id_hash', PasskeyCredential::hashCredentialId($encodedCredentialId))
+                ->first();
+        }
+
+        if (! $credential) {
+            $credential = PasskeyCredential::query()
+                ->where('credential_id', $encodedCredentialId)
+                ->first();
+
+            if (
+                $credential
+                && $credential->hasCredentialIdHashColumn()
+                && ! $credential->credential_id_hash
+            ) {
+                $credential->credential_id_hash = PasskeyCredential::hashCredentialId($encodedCredentialId);
+                $credential->save();
+            }
+        }
+
+        return $credential;
     }
 
     private function deserializeCredential(array $credentialData): PublicKeyCredential
@@ -260,9 +293,9 @@ class WebAuthnService
                 'id' => $this->encodeCredentialId($credential->id),
             ], $options->excludeCredentials),
             'authenticatorSelection' => [
-                'residentKey' => 'preferred',
-                'requireResidentKey' => false,
-                'userVerification' => 'preferred',
+                'residentKey' => $this->residentKeyRequirement(),
+                'requireResidentKey' => $this->residentKeyRequirement() === AuthenticatorSelectionCriteria::RESIDENT_KEY_REQUIREMENT_REQUIRED,
+                'userVerification' => $this->userVerificationRequirement(),
             ],
             'attestation' => 'none',
         ];
@@ -299,5 +332,23 @@ class WebAuthnService
         }
 
         return (string) ($user->{$attribute} ?? $user->getAuthIdentifier());
+    }
+
+    private function userVerificationRequirement(): string
+    {
+        $value = config('bherila-auth.passkeys.user_verification', AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_PREFERRED);
+
+        return in_array($value, AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENTS, true)
+            ? $value
+            : AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_PREFERRED;
+    }
+
+    private function residentKeyRequirement(): ?string
+    {
+        $value = config('bherila-auth.passkeys.resident_key', AuthenticatorSelectionCriteria::RESIDENT_KEY_REQUIREMENT_PREFERRED);
+
+        return in_array($value, AuthenticatorSelectionCriteria::RESIDENT_KEY_REQUIREMENTS, true)
+            ? $value
+            : AuthenticatorSelectionCriteria::RESIDENT_KEY_REQUIREMENT_PREFERRED;
     }
 }

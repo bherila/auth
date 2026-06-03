@@ -7,9 +7,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PasskeyCredential extends Model
 {
+    private static array $credentialIdHashColumnCache = [];
+
     protected $fillable = [
         'user_id',
         'credential_id',
+        'credential_id_hash',
         'public_key',
         'counter',
         'aaguid',
@@ -24,9 +27,45 @@ class PasskeyCredential extends Model
         'last_used_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        static::saving(function (PasskeyCredential $credential): void {
+            if (
+                ! is_string($credential->credential_id)
+                || $credential->credential_id === ''
+                || ! $credential->hasCredentialIdHashColumn()
+            ) {
+                return;
+            }
+
+            if ($credential->isDirty('credential_id') || ! $credential->credential_id_hash) {
+                $credential->credential_id_hash = self::hashCredentialId($credential->credential_id);
+            }
+        });
+    }
+
     public function getTable(): string
     {
         return config('bherila-auth.passkeys.table', 'auth_passkeys');
+    }
+
+    public static function hashCredentialId(string $credentialId): string
+    {
+        return hash('sha256', $credentialId);
+    }
+
+    public function hasCredentialIdHashColumn(): bool
+    {
+        $connection = $this->getConnection();
+        $key = $connection->getName().'.'.$this->getTable();
+
+        if (! array_key_exists($key, self::$credentialIdHashColumnCache)) {
+            self::$credentialIdHashColumnCache[$key] = $connection
+                ->getSchemaBuilder()
+                ->hasColumn($this->getTable(), 'credential_id_hash');
+        }
+
+        return self::$credentialIdHashColumnCache[$key];
     }
 
     public function user(): BelongsTo

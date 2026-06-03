@@ -5,6 +5,7 @@ namespace BWH\Auth\Http\Controllers;
 use BWH\Auth\Contracts\AuthAuditLogger;
 use BWH\Auth\Mail\PasswordResetNoticeMail;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -38,9 +39,16 @@ class AuthenticatedPasswordController extends Controller
             ], 422);
         }
 
-        $user->forceFill([
+        $attributes = [
             'password' => Hash::make($validated['password']),
-        ])->save();
+        ];
+
+        $forceChangeAttribute = config('bherila-auth.users.force_change_password_attribute');
+        if (is_string($forceChangeAttribute) && $forceChangeAttribute !== '' && $this->modelHasColumn($user, $forceChangeAttribute)) {
+            $attributes[$forceChangeAttribute] = false;
+        }
+
+        $user->forceFill($attributes)->save();
 
         $appName = config('app.name', 'Application');
         $emailAttribute = config('bherila-auth.users.email_attribute', 'email');
@@ -56,5 +64,11 @@ class AuthenticatedPasswordController extends Controller
             'success' => true,
             'message' => 'Password changed successfully.',
         ]);
+    }
+
+    private function modelHasColumn(Authenticatable $user, string $column): bool
+    {
+        return $user instanceof Model
+            && $user->getConnection()->getSchemaBuilder()->hasColumn($user->getTable(), $column);
     }
 }

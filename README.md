@@ -14,7 +14,7 @@ The packages intentionally keep app-specific policy outside the shared core. App
 `bwh-auth` is installed from GitHub Releases:
 
 ```sh
-pnpm add https://github.com/bherila/auth/releases/download/bwh-auth-v0.1.1/bwh-auth-0.1.1.tgz
+pnpm add https://github.com/bherila/auth/releases/download/bwh-auth-v0.2.0/bwh-auth-0.2.0.tgz
 ```
 
 Each consuming app injects its own shadcn/Base UI components into `bwh-auth`.

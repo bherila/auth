@@ -48,13 +48,18 @@ Published config lives at `config/bherila-auth.php`. Important settings:
 
 - `routes.prefix`: defaults to `api`, so package endpoints are under `/api/...`.
 - `routes.middleware`: defaults to `['web']` so session auth and CSRF work in Laravel/Vite apps.
+- `routes.passkeys`, `routes.password_resets`, `routes.change_password`, and `routes.two_factor`: enable or disable route families independently when an app owns one part of the auth surface locally.
 - `password_resets.reset_url`: reset-page URL generated into password reset emails. Defaults to `{APP_URL}/reset-password/{token}?email={email}`.
+- `password_resets.verify_email_on_reset`: optionally marks verified-email users verified after a successful reset.
 - `password_resets.redirect_after_reset`: JSON redirect returned after a successful reset.
 - `BHERILA_AUTH_PASSWORD_RESET_MAIL_SUBJECT`: optional reset-link mailable subject override.
 - `BHERILA_AUTH_PASSWORD_NOTICE_MAIL_SUBJECT`: optional password reset/change notice subject override.
 - `two_factor.expires_minutes`: 2FA code expiry. Defaults to 15 minutes.
 - `two_factor.allow_test_code`: allows the configured test code outside production.
 - `BHERILA_AUTH_TWO_FACTOR_MAIL_SUBJECT`: optional email 2FA subject override.
+- `passkeys.user_verification`: WebAuthn user verification requirement. Defaults to `preferred`; set to `required` for passkeys used as a stronger security factor.
+- `passkeys.resident_key`: WebAuthn resident key requirement. Defaults to `preferred`.
+- `users.force_change_password_attribute`: optional boolean column to clear after password reset/change, such as `force_change_pw`.
 - `migrations.drop_tables_on_rollback`: defaults to `false` so package rollbacks do not drop existing app auth tables.
 
 The package migration uses `Schema::hasTable()` before creating its tables. This lets existing apps such as bwh-php keep an already-created passkey table without migration failure. It does not alter existing tables, so apps with older or different schemas should either point the package config at compatible tables or add an app-local migration for schema reconciliation. Rollback table drops are disabled by default to avoid deleting pre-existing auth data.
@@ -69,7 +74,9 @@ With the default prefix, the package registers:
 - `POST /api/auth/two-factor/verify`
 - `POST /api/auth/two-factor/resend`
 - `GET /api/auth/two-factor/confirm/{token}`
-- `GET|POST /api/auth/two-factor/report/{token}`
+- `POST /api/auth/two-factor/confirm/{token}`
+- `GET /api/auth/two-factor/report/{token}`
+- `POST /api/auth/two-factor/report/{token}`
 - `GET /api/passkeys`
 - `POST /api/passkeys/register/options`
 - `POST /api/passkeys/register`
@@ -142,7 +149,9 @@ export function TwoFactorPage({ token }: { token: string }) {
 }
 ```
 
-`TwoFactorForm` posts to `/api/auth/two-factor/verify`, can resend via `/api/auth/two-factor/resend`, and can report suspicious attempts via `POST /api/auth/two-factor/report/{token}`. The same report route also accepts `GET` so the email report link works.
+`TwoFactorForm` posts to `/api/auth/two-factor/verify`, can resend via `/api/auth/two-factor/resend`, and can report suspicious attempts via `POST /api/auth/two-factor/report/{token}`.
+
+Email confirmation and report links are side-effect-free `GET` pages. The user must submit a CSRF-protected `POST` to complete login or report suspicious activity, which prevents common email security scanners from consuming one-shot login links.
 
 ## Mailables
 

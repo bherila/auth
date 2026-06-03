@@ -1,6 +1,5 @@
 node_modules/
 ui/node_modules/
-ui/dist/
 laravel/vendor/
 .DS_Store
 *.log
