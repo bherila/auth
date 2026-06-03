@@ -33,7 +33,8 @@ return new class extends Migration
             Schema::create($passkeysTable, function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-                $table->string('credential_id', 2048)->unique();
+                $table->string('credential_id', 2048);
+                $table->string('credential_id_hash', 64)->nullable()->unique();
                 $table->text('public_key');
                 $table->unsignedBigInteger('counter')->default(0);
                 $table->string('aaguid', 64)->nullable();

@@ -148,9 +148,7 @@ class WebAuthnService
 
         $options = unserialize($serializedOptions);
         $credential = $this->deserializeCredential($credentialData);
-        $storedCredential = PasskeyCredential::query()
-            ->where('credential_id', $this->encodeCredentialId($credential->rawId))
-            ->first();
+        $storedCredential = $this->findStoredCredential($this->encodeCredentialId($credential->rawId));
 
         if (! $storedCredential) {
             throw new RuntimeException('Credential not found.');
@@ -177,6 +175,35 @@ class WebAuthnService
         ]);
 
         return [$user, $storedCredential];
+    }
+
+    private function findStoredCredential(string $encodedCredentialId): ?PasskeyCredential
+    {
+        $credential = null;
+        $probe = new PasskeyCredential();
+
+        if ($probe->hasCredentialIdHashColumn()) {
+            $credential = PasskeyCredential::query()
+                ->where('credential_id_hash', PasskeyCredential::hashCredentialId($encodedCredentialId))
+                ->first();
+        }
+
+        if (! $credential) {
+            $credential = PasskeyCredential::query()
+                ->where('credential_id', $encodedCredentialId)
+                ->first();
+
+            if (
+                $credential
+                && $credential->hasCredentialIdHashColumn()
+                && ! $credential->credential_id_hash
+            ) {
+                $credential->credential_id_hash = PasskeyCredential::hashCredentialId($encodedCredentialId);
+                $credential->save();
+            }
+        }
+
+        return $credential;
     }
 
     private function deserializeCredential(array $credentialData): PublicKeyCredential
