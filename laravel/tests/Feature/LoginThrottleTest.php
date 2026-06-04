@@ -2,9 +2,11 @@
 
 namespace BWH\Auth\Tests\Feature;
 
+use BWH\Auth\Concerns\ThrottlesLoginAttempts;
 use BWH\Auth\Contracts\AuthAuditLogger;
 use BWH\Auth\Contracts\LoginThrottle;
 use BWH\Auth\Models\AuthAuditLog;
+use BWH\Auth\Support\LoginThrottleState;
 use BWH\Auth\Tests\Fixtures\User;
 use BWH\Auth\Tests\TestCase;
 use Illuminate\Http\Request;
@@ -179,5 +181,174 @@ class LoginThrottleTest extends TestCase
         app(LoginThrottle::class)->recordBlocked($this->request(), null, 'user@example.com');
 
         $this->assertSame(0, AuthAuditLog::query()->where('event', AuthAuditLog::EVENT_LOGIN_BLOCKED)->count());
+    }
+
+    public function test_record_blocked_is_noop_when_throttle_disabled(): void
+    {
+        Carbon::setTestNow('2026-06-04 12:00:00');
+        // Throttle left disabled (the default): even a state that looks locked must not write.
+        app(AuthAuditLogger::class)->loginFailed($this->request(), null, 'user@example.com', 'Invalid credentials');
+
+        app(LoginThrottle::class)->recordBlocked($this->request(), null, 'user@example.com');
+
+        $this->assertSame(0, AuthAuditLog::query()->where('event', AuthAuditLog::EVENT_LOGIN_BLOCKED)->count());
+    }
+
+    public function test_zero_max_attempts_is_a_fail_safe_that_never_locks(): void
+    {
+        Carbon::setTestNow('2026-06-04 12:00:00');
+        $this->enableThrottle(maxAttempts: 0, decayMinutes: 10);
+
+        foreach (range(1, 4) as $_) {
+            app(AuthAuditLogger::class)->loginFailed($this->request(), null, 'user@example.com', 'Invalid credentials');
+        }
+
+        $state = app(LoginThrottle::class)->inspect($this->request(), null, 'user@example.com');
+
+        $this->assertFalse($state->locked);
+        $this->assertTrue($state->allowsLogin());
+    }
+
+    public function test_second_factor_failures_do_not_count_toward_login_lockout(): void
+    {
+        Carbon::setTestNow('2026-06-04 12:00:00');
+        $this->enableThrottle(maxAttempts: 2, decayMinutes: 10);
+
+        // One genuine password failure for this key.
+        app(AuthAuditLogger::class)->loginFailed($this->request(), null, 'user@example.com', 'Invalid credentials');
+
+        // A real second-factor failure (different event AND auth_method) must be ignored.
+        app(AuthAuditLogger::class)->twoFactorLoginFailed($this->request(), $this->user('user@example.com'), null, 'Wrong code');
+
+        // And even a two_factor_failed row crafted to share the same email + IP +
+        // 'password' method must be excluded by the EVENT filter, not by the key.
+        AuthAuditLog::create([
+            'event' => AuthAuditLog::EVENT_TWO_FACTOR_FAILED,
+            'auth_method' => 'password',
+            'succeeded' => false,
+            'email' => 'user@example.com',
+            'ip_address' => '198.51.100.10',
+            'reason' => 'Wrong code',
+        ]);
+
+        $state = app(LoginThrottle::class)->inspect($this->request(), null, 'user@example.com');
+
+        $this->assertFalse($state->locked);
+        $this->assertSame(1, $state->attempts);
+    }
+
+    public function test_email_key_strategy_counts_failures_across_source_ips(): void
+    {
+        Carbon::setTestNow('2026-06-04 12:00:00');
+        $this->enableThrottle(maxAttempts: 2, decayMinutes: 10);
+        config(['bherila-auth.throttle.key' => 'email']);
+
+        // Same account, two different source IPs.
+        app(AuthAuditLogger::class)->loginFailed($this->request('203.0.113.1'), null, 'user@example.com', 'Invalid credentials');
+        app(AuthAuditLogger::class)->loginFailed($this->request('203.0.113.2'), null, 'user@example.com', 'Invalid credentials');
+        // A different account from a shared IP must not contribute.
+        app(AuthAuditLogger::class)->loginFailed($this->request('203.0.113.1'), null, 'other@example.com', 'Invalid credentials');
+
+        // Inspecting from a third, never-seen IP still locks because the key is the email.
+        $state = app(LoginThrottle::class)->inspect($this->request('203.0.113.9'), null, 'user@example.com');
+
+        $this->assertTrue($state->locked);
+        $this->assertSame(2, $state->attempts);
+    }
+
+    public function test_ip_key_strategy_counts_failures_across_accounts(): void
+    {
+        Carbon::setTestNow('2026-06-04 12:00:00');
+        $this->enableThrottle(maxAttempts: 2, decayMinutes: 10);
+        config(['bherila-auth.throttle.key' => 'ip']);
+
+        // Same source IP, two different accounts (credential-stuffing shape).
+        app(AuthAuditLogger::class)->loginFailed($this->request('203.0.113.5'), null, 'a@example.com', 'Invalid credentials');
+        app(AuthAuditLogger::class)->loginFailed($this->request('203.0.113.5'), null, 'b@example.com', 'Invalid credentials');
+        // Same accounts from a different IP must not contribute.
+        app(AuthAuditLogger::class)->loginFailed($this->request('203.0.113.6'), null, 'a@example.com', 'Invalid credentials');
+
+        // Inspecting with a third, never-seen account still locks because the key is the IP.
+        $state = app(LoginThrottle::class)->inspect($this->request('203.0.113.5'), null, 'c@example.com');
+
+        $this->assertTrue($state->locked);
+        $this->assertSame(2, $state->attempts);
+    }
+
+    public function test_email_ip_strategy_does_not_lock_when_only_one_dimension_matches(): void
+    {
+        Carbon::setTestNow('2026-06-04 12:00:00');
+        // Default strategy is email_ip.
+        $this->enableThrottle(maxAttempts: 2, decayMinutes: 10);
+
+        // Two failures for the same account but from two different IPs.
+        app(AuthAuditLogger::class)->loginFailed($this->request('203.0.113.1'), null, 'user@example.com', 'Invalid credentials');
+        app(AuthAuditLogger::class)->loginFailed($this->request('203.0.113.2'), null, 'user@example.com', 'Invalid credentials');
+
+        // email_ip needs both to match, so neither source pair has reached the limit.
+        $state = app(LoginThrottle::class)->inspect($this->request('203.0.113.1'), null, 'user@example.com');
+
+        $this->assertFalse($state->locked);
+        $this->assertSame(1, $state->attempts);
+    }
+
+    public function test_unknown_key_strategy_falls_back_to_email_ip(): void
+    {
+        Carbon::setTestNow('2026-06-04 12:00:00');
+        $this->enableThrottle(maxAttempts: 2, decayMinutes: 10);
+        config(['bherila-auth.throttle.key' => 'totally-bogus']);
+
+        // Treated as email_ip: differing IPs for one account must not lock.
+        app(AuthAuditLogger::class)->loginFailed($this->request('203.0.113.1'), null, 'user@example.com', 'Invalid credentials');
+        app(AuthAuditLogger::class)->loginFailed($this->request('203.0.113.2'), null, 'user@example.com', 'Invalid credentials');
+
+        $state = app(LoginThrottle::class)->inspect($this->request('203.0.113.1'), null, 'user@example.com');
+
+        $this->assertFalse($state->locked);
+        $this->assertSame(1, $state->attempts);
+    }
+
+    public function test_email_strategy_without_an_email_is_allowed(): void
+    {
+        Carbon::setTestNow('2026-06-04 12:00:00');
+        $this->enableThrottle(maxAttempts: 1, decayMinutes: 10);
+        config(['bherila-auth.throttle.key' => 'email']);
+
+        // No email to key on, and the strategy ignores IP, so there is no usable key.
+        $state = app(LoginThrottle::class)->inspect($this->request(), null, null);
+
+        $this->assertFalse($state->enabled);
+        $this->assertFalse($state->locked);
+        $this->assertTrue($state->allowsLogin());
+    }
+
+    public function test_throttles_login_attempts_trait_delegates_to_the_service(): void
+    {
+        Carbon::setTestNow('2026-06-04 12:00:00');
+        $this->enableThrottle(maxAttempts: 1, decayMinutes: 10);
+
+        app(AuthAuditLogger::class)->loginFailed($this->request('203.0.113.70'), null, 'user@example.com', 'Invalid credentials');
+
+        $controller = new class
+        {
+            use ThrottlesLoginAttempts;
+
+            public function state(Request $request, ?string $email): LoginThrottleState
+            {
+                return $this->inspectLoginThrottle($request, null, $email);
+            }
+
+            public function block(Request $request, ?string $email, LoginThrottleState $state): void
+            {
+                $this->auditLoginBlocked($request, null, $email, 'password', $state);
+            }
+        };
+
+        $state = $controller->state($this->request('203.0.113.70'), 'user@example.com');
+        $this->assertTrue($state->locked);
+
+        $controller->block($this->request('203.0.113.70'), 'user@example.com', $state);
+
+        $this->assertSame(1, AuthAuditLog::query()->where('event', AuthAuditLog::EVENT_LOGIN_BLOCKED)->count());
     }
 }

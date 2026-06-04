@@ -61,8 +61,9 @@ Published config lives at `config/bherila-auth.php`. Important settings:
 - `passkeys.user_verification`: WebAuthn user verification requirement. Defaults to `preferred`; set to `required` for passkeys used as a stronger security factor.
 - `passkeys.resident_key`: WebAuthn resident key requirement. Defaults to `preferred`.
 - `throttle.enabled`: enables audit-log-backed password-login lockout. Defaults to `false`.
-- `throttle.max_attempts`: failed attempts allowed for the same email/IP/method before lockout. Defaults to `5`.
+- `throttle.max_attempts`: failed attempts allowed for the same key before lockout. Defaults to `5`.
 - `throttle.decay_minutes`: lockout/window length. Defaults to `15`.
+- `throttle.key`: how failed attempts are grouped — `email` (per account, across all IPs), `ip` (per source, across all accounts), or `email_ip` (per account+source pair). Defaults to `email_ip`; any unrecognized value falls back to `email_ip`.
 - `users.force_change_password_attribute`: optional boolean column to clear after password reset/change, such as `force_change_pw`.
 - `migrations.drop_tables_on_rollback`: defaults to `false` so package rollbacks do not drop existing app auth tables.
 
@@ -259,6 +260,8 @@ BHERILA_AUTH_AUDIT_DRIVER=database
 BHERILA_AUTH_THROTTLE_ENABLED=true
 BHERILA_AUTH_THROTTLE_MAX_ATTEMPTS=5
 BHERILA_AUTH_THROTTLE_DECAY_MINUTES=15
+# email | ip | email_ip (default)
+BHERILA_AUTH_THROTTLE_KEY=email_ip
 ```
 
 Use `BWH\Auth\Concerns\ThrottlesLoginAttempts` alongside `LogsAuthEvents`:
@@ -297,6 +300,8 @@ class LoginController
 }
 ```
 
-The throttle counts recent `login_failed` rows matching the normalized email, resolved client IP, and auth method. A later `login_succeeded` row for the same key resets the count. Blocked requests can be recorded as `login_blocked` rows via `auditLoginBlocked()`, but those rows do not extend the lockout window.
+The throttle counts recent `login_failed` rows matching the auth method and the configured `throttle.key`: the normalized email (`email`), the resolved client IP (`ip`), or both (`email_ip`, the default). Second-factor failures (`two_factor_failed`) are excluded by event, so a wrong 2FA code never counts toward credential lockout. A later `login_succeeded` row for the same key resets the count. Blocked requests can be recorded as `login_blocked` rows via `auditLoginBlocked()`, but those rows do not extend the lockout window.
+
+Pick the key strategy to match your threat model: `email` mitigates per-account credential stuffing but lets an attacker lock a victim out by spamming failures for their address; `ip` bounds a single noisy source but can affect users behind a shared NAT/CGNAT egress; `email_ip` (default) is the most conservative and only locks a specific account+source pair.
 
 Because throttling is audit-log-backed, apps must enable the database audit driver, run the package audit migration, record failed/successful primary login events, and configure Laravel trusted proxies correctly.
