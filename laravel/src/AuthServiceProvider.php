@@ -4,6 +4,8 @@ namespace BWH\Auth;
 
 use BWH\Auth\Contracts\AuthAuditLogger;
 use BWH\Auth\Contracts\AuthUserPolicy;
+use BWH\Auth\Contracts\LoginThrottle;
+use BWH\Auth\Services\AuthAuditLogLoginThrottle;
 use BWH\Auth\Services\DatabaseAuthAuditLogger;
 use BWH\Auth\Services\DefaultAuthUserPolicy;
 use BWH\Auth\Services\NullAuthAuditLogger;
@@ -22,6 +24,7 @@ class AuthServiceProvider extends ServiceProvider
                 ? $app->make(DatabaseAuthAuditLogger::class)
                 : $app->make(NullAuthAuditLogger::class);
         });
+        $this->app->bind(LoginThrottle::class, AuthAuditLogLoginThrottle::class);
     }
 
     public function boot(): void
