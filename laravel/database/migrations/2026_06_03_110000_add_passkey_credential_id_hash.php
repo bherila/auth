@@ -59,15 +59,25 @@ return new class extends Migration
             return;
         }
 
-        Schema::table($tableName, function (Blueprint $table) use ($tableName) {
-            if (Schema::hasIndex($tableName, $this->uniqueIndex)) {
-                $table->dropUnique($this->uniqueIndex);
-            }
+        // Drop any index on credential_id_hash before the column, in a separate
+        // schema operation. We resolve index names from getIndexes() rather than
+        // assuming them: SQLite rebuilds the table on earlier column/index drops
+        // and re-derives index names (so the custom name may no longer apply),
+        // and dropping a column while an index still references it errors.
+        $indexes = collect(Schema::getIndexes($tableName))
+            ->filter(fn (array $index): bool => in_array('credential_id_hash', $index['columns'], true));
 
-            if (Schema::hasIndex($tableName, $this->regularIndex)) {
-                $table->dropIndex($this->regularIndex);
+        Schema::table($tableName, function (Blueprint $table) use ($indexes) {
+            foreach ($indexes as $index) {
+                if ($index['unique']) {
+                    $table->dropUnique($index['name']);
+                } else {
+                    $table->dropIndex($index['name']);
+                }
             }
+        });
 
+        Schema::table($tableName, function (Blueprint $table) {
             $table->dropColumn('credential_id_hash');
         });
     }
