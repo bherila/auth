@@ -60,6 +60,9 @@ Published config lives at `config/bherila-auth.php`. Important settings:
 - `BHERILA_AUTH_TWO_FACTOR_MAIL_SUBJECT`: optional email 2FA subject override.
 - `passkeys.user_verification`: WebAuthn user verification requirement. Defaults to `preferred`; set to `required` for passkeys used as a stronger security factor.
 - `passkeys.resident_key`: WebAuthn resident key requirement. Defaults to `preferred`.
+- `throttle.enabled`: enables audit-log-backed password-login lockout. Defaults to `false`.
+- `throttle.max_attempts`: failed attempts allowed for the same email/IP/method before lockout. Defaults to `5`.
+- `throttle.decay_minutes`: lockout/window length. Defaults to `15`.
 - `users.force_change_password_attribute`: optional boolean column to clear after password reset/change, such as `force_change_pw`.
 - `migrations.drop_tables_on_rollback`: defaults to `false` so package rollbacks do not drop existing app auth tables.
 
@@ -246,3 +249,54 @@ Schedule::command('model:prune', ['--model' => [\BWH\Auth\Models\AuthAuditLog::c
 ```
 
 > **Since 0.2.0.** The audit-log table, default database logger, `BinaryIpAddressCast`, `ClientIp`, the `LogsAuthEvents` trait, read endpoints, retention, and the `loginSucceeded`/`loginFailed`/`loggedOut` contract methods were added in 0.2.0. The contract gained methods; implementations should extend `BWH\Auth\Services\AbstractAuthAuditLogger` (which provides no-op defaults) rather than implementing the interface directly.
+
+## Login throttling
+
+The package can also enforce a password-login lockout using the same append-only `auth_audit_log` table. It is **off by default** and has no effect until a consuming app enables it and calls the service from its own password-login controller:
+
+```
+BHERILA_AUTH_AUDIT_DRIVER=database
+BHERILA_AUTH_THROTTLE_ENABLED=true
+BHERILA_AUTH_THROTTLE_MAX_ATTEMPTS=5
+BHERILA_AUTH_THROTTLE_DECAY_MINUTES=15
+```
+
+Use `BWH\Auth\Concerns\ThrottlesLoginAttempts` alongside `LogsAuthEvents`:
+
+```php
+use BWH\Auth\Concerns\LogsAuthEvents;
+use BWH\Auth\Concerns\ThrottlesLoginAttempts;
+
+class LoginController
+{
+    use LogsAuthEvents;
+    use ThrottlesLoginAttempts;
+
+    public function login(Request $request)
+    {
+        $email = $request->input('email');
+        $state = $this->inspectLoginThrottle($request, null, $email);
+
+        if ($state->locked) {
+            $this->auditLoginBlocked($request, null, $email, 'password', $state);
+
+            return response()->json([
+                'message' => 'Too many login attempts.',
+                'retry_after' => $state->availableInSeconds(),
+            ], 429);
+        }
+
+        // ... attempt credentials ...
+        if (! $ok) {
+            $this->auditLoginFailed($request, $user, $email, 'Invalid credentials');
+            // ...
+        }
+
+        $this->auditLoginSucceeded($request, $user);
+    }
+}
+```
+
+The throttle counts recent `login_failed` rows matching the normalized email, resolved client IP, and auth method. A later `login_succeeded` row for the same key resets the count. Blocked requests can be recorded as `login_blocked` rows via `auditLoginBlocked()`, but those rows do not extend the lockout window.
+
+Because throttling is audit-log-backed, apps must enable the database audit driver, run the package audit migration, record failed/successful primary login events, and configure Laravel trusted proxies correctly.
