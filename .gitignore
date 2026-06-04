@@ -1,6 +1,10 @@
 node_modules/
 ui/node_modules/
 laravel/vendor/
+/vendor/
+/composer.lock
+.phpunit.result.cache
+.phpunit.cache/
 .DS_Store
 *.log
 

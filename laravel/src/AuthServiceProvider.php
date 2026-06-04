@@ -4,6 +4,7 @@ namespace BWH\Auth;
 
 use BWH\Auth\Contracts\AuthAuditLogger;
 use BWH\Auth\Contracts\AuthUserPolicy;
+use BWH\Auth\Services\DatabaseAuthAuditLogger;
 use BWH\Auth\Services\DefaultAuthUserPolicy;
 use BWH\Auth\Services\NullAuthAuditLogger;
 use Illuminate\Support\Facades\Route;
@@ -16,7 +17,11 @@ class AuthServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/bherila-auth.php', 'bherila-auth');
 
         $this->app->bind(AuthUserPolicy::class, DefaultAuthUserPolicy::class);
-        $this->app->bind(AuthAuditLogger::class, NullAuthAuditLogger::class);
+        $this->app->bind(AuthAuditLogger::class, function ($app) {
+            return config('bherila-auth.audit.driver') === 'database'
+                ? $app->make(DatabaseAuthAuditLogger::class)
+                : $app->make(NullAuthAuditLogger::class);
+        });
     }
 
     public function boot(): void
@@ -45,6 +50,12 @@ class AuthServiceProvider extends ServiceProvider
             Route::prefix(config('bherila-auth.routes.prefix', 'api'))
                 ->middleware(config('bherila-auth.routes.middleware', ['web']))
                 ->group(__DIR__.'/../routes/auth.php');
+        }
+
+        if (config('bherila-auth.audit.routes_enabled', false)) {
+            Route::prefix(config('bherila-auth.routes.prefix', 'api'))
+                ->middleware(config('bherila-auth.routes.middleware', ['web']))
+                ->group(__DIR__.'/../routes/audit.php');
         }
     }
 

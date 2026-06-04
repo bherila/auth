@@ -8,6 +8,7 @@ Includes:
 - email-code 2FA challenge service, API routes, and mailables
 - password reset request/reset/change API routes and mailables
 - passkey and 2FA database tables
+- login audit logging: an owned `auth_audit_log` table, a default database logger, binary IP storage, optional read endpoints, and opt-in retention (see "Login audit logging")
 - policy and audit contracts for app-specific behavior
 
 ## Install
@@ -83,6 +84,8 @@ With the default prefix, the package registers:
 - `DELETE /api/passkeys/{id}`
 - `POST /api/passkeys/auth/options`
 - `POST /api/passkeys/auth`
+
+When `audit.routes_enabled` is true (off by default), it also registers `GET /api/auth/audit-log`, `POST /api/auth/audit-log/{id}/suspicious`, and `GET /api/auth/audit-log/all`. See "Login audit logging".
 
 ## Ownership boundary
 
@@ -167,4 +170,79 @@ Views are loaded from the `bherila-auth::emails.*` namespace and can be overridd
 
 Bind `BWH\Auth\Contracts\AuthUserPolicy` when an app needs custom login gates or redirects.
 
-Bind `BWH\Auth\Contracts\AuthAuditLogger` when an app wants package auth events mirrored into its own audit tables.
+Bind `BWH\Auth\Contracts\AuthAuditLogger` only when an app wants to override the built-in audit behavior (for example, to mirror events into its own broader audit table). Most apps should instead use the database driver described below.
+
+## Login audit logging
+
+The package can own a single append-only audit log for authentication events, so consuming apps no longer hand-roll their own login-audit table and writer.
+
+### Enable it
+
+```sh
+php artisan vendor:publish --tag=bherila-auth-config
+php artisan vendor:publish --tag=bherila-auth-migrations
+php artisan migrate
+```
+
+Then set the driver in `.env`:
+
+```
+BHERILA_AUTH_AUDIT_DRIVER=database
+```
+
+The driver defaults to `null` (a no-op `NullAuthAuditLogger`), so an app that has not published/run the migration is unaffected and never hits a missing table. Setting it to `database` binds `DatabaseAuthAuditLogger`, which writes one row per event into the `bherila-auth.audit.table` table (default `auth_audit_log`).
+
+### What gets recorded
+
+The package's own controllers/services already report passkey, 2FA, and password reset/change events. For **primary password login and logout**, the package does not own the login controller, so the app calls the contract from its own login flow. Use the `LogsAuthEvents` trait:
+
+```php
+use BWH\Auth\Concerns\LogsAuthEvents;
+
+class LoginController
+{
+    use LogsAuthEvents;
+
+    public function login(Request $request)
+    {
+        // ... resolve $user, attempt credentials ...
+        if (! $ok) {
+            $this->auditLoginFailed($request, $user, $request->input('email'), 'Invalid credentials');
+            // ...
+        }
+
+        $this->auditLoginSucceeded($request, $user); // method defaults to 'password'
+    }
+
+    public function logout(Request $request)
+    {
+        $this->auditLoggedOut($request, $request->user());
+        // ...
+    }
+}
+```
+
+`auth_method` is a free-form string (e.g. `password`, `passkey`, `two_factor`, `dev`). Failed logins for unknown emails are recorded with a null `user_id` and the attempted `email`.
+
+### Schema
+
+`auth_audit_log` columns: `id`, `user_id` (nullable), `acting_user_id` (nullable), `email`, `event`, `auth_method`, `succeeded`, `reason`, `ip_address` (`varbinary(16)` on MySQL / `blob` on SQLite, via `BWH\Auth\Casts\BinaryIpAddressCast`), `user_agent`, `session_id`, `is_suspicious`, `metadata` (json), timestamps. Event-name constants live on `BWH\Auth\Models\AuthAuditLog` (`EVENT_LOGIN_SUCCEEDED`, etc.). The client IP is resolved via `BWH\Auth\Support\ClientIp`, which uses Laravel's `Request::ip()` — so it only honours `X-Forwarded-*` headers from configured trusted proxies. **Apps behind Cloudflare or a load balancer must configure Laravel's TrustProxies** (in `bootstrap/app.php`) so the real client IP is recorded; otherwise forwarded headers are ignored to prevent audit-log IP spoofing.
+
+### Read endpoints (optional)
+
+Set `BHERILA_AUTH_AUDIT_ROUTES=true` to register read endpoints (the package ships no UI; render your own and call these or query `AuthAuditLog`):
+
+- `GET /api/auth/audit-log` — the authenticated user's own history (paginated)
+- `POST /api/auth/audit-log/{id}/suspicious` — flag/unflag one of the user's own entries
+- `GET /api/auth/audit-log/all` — cross-user admin list, gated by the `bherila-auth.audit.admin_ability` Gate ability (route returns 403 unless that ability is configured and allowed)
+
+### Retention
+
+Retention is **off by default** (`bherila-auth.audit.retention_days = null`), so nothing is ever pruned. To enable pruning, set `BHERILA_AUTH_AUDIT_RETENTION_DAYS` and schedule Laravel's prune command:
+
+```php
+// bootstrap/app.php or a scheduler
+Schedule::command('model:prune', ['--model' => [\BWH\Auth\Models\AuthAuditLog::class]])->daily();
+```
+
+> **Since 0.2.0.** The audit-log table, default database logger, `BinaryIpAddressCast`, `ClientIp`, the `LogsAuthEvents` trait, read endpoints, retention, and the `loginSucceeded`/`loginFailed`/`loggedOut` contract methods were added in 0.2.0. The contract gained methods; implementations should extend `BWH\Auth\Services\AbstractAuthAuditLogger` (which provides no-op defaults) rather than implementing the interface directly.

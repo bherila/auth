@@ -7,6 +7,12 @@ use Illuminate\Http\Request;
 
 interface AuthAuditLogger
 {
+    public function loginSucceeded(Request $request, Authenticatable $user, ?string $method = 'password'): void;
+
+    public function loginFailed(Request $request, ?Authenticatable $user, ?string $email, string $reason, ?string $method = 'password'): void;
+
+    public function loggedOut(Request $request, ?Authenticatable $user): void;
+
     public function passkeyRegistered(Request $request, Authenticatable $user, object $credential): void;
 
     public function passkeyDeleted(Request $request, Authenticatable $user, object $credential): void;

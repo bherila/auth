@@ -18,10 +18,21 @@
     "symfony/uid": "^7.0",
     "web-auth/webauthn-lib": "^5.2"
   },
+  "require-dev": {
+    "orchestra/testbench": "^10.0"
+  },
   "autoload": {
     "psr-4": {
       "BWH\\Auth\\": "laravel/src/"
     }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "BWH\\Auth\\Tests\\": "laravel/tests/"
+    }
+  },
+  "scripts": {
+    "test": "phpunit"
   },
   "extra": {
     "laravel": {

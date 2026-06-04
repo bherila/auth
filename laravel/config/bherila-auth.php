@@ -15,6 +15,18 @@ return [
         'drop_tables_on_rollback' => false,
     ],
 
+    'audit' => [
+        // 'null' discards events (default); 'database' persists them to the audit table.
+        'driver' => env('BHERILA_AUTH_AUDIT_DRIVER', 'null'),
+        'table' => 'auth_audit_log',
+        // Expose the package's read endpoints (own login history + admin list). Off by default.
+        'routes_enabled' => env('BHERILA_AUTH_AUDIT_ROUTES', false),
+        // null = retain forever (no pruning). Set a positive integer to enable `model:prune`.
+        'retention_days' => env('BHERILA_AUTH_AUDIT_RETENTION_DAYS'),
+        // Gate ability required for the cross-user admin endpoint; null disables that route.
+        'admin_ability' => env('BHERILA_AUTH_AUDIT_ADMIN_ABILITY'),
+    ],
+
     'password_resets' => [
         'reset_url' => env('BHERILA_AUTH_PASSWORD_RESET_URL', env('APP_URL', '').'/reset-password/{token}?email={email}'),
         'request_url' => env('BHERILA_AUTH_PASSWORD_REQUEST_URL', '/forgot-password'),
