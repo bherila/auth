@@ -67,6 +67,8 @@ Published config lives at `config/bherila-auth.php`. Important settings:
 - `users.force_change_password_attribute`: optional boolean column to clear after password reset/change, such as `force_change_pw`.
 - `migrations.drop_tables_on_rollback`: defaults to `false` so package rollbacks do not drop existing app auth tables.
 
+Enabling `throttle.enabled` only changes the package service behavior. Apps that use their own password-login controller must still call `ThrottlesLoginAttempts` or the `LoginThrottle` contract from that controller before attempting credentials. Publishing the config alone does not intercept custom `/login` routes.
+
 The package migration uses `Schema::hasTable()` before creating its tables. This lets existing apps such as bwh-php keep an already-created passkey table without migration failure. It does not alter existing tables, so apps with older or different schemas should either point the package config at compatible tables or add an app-local migration for schema reconciliation. Rollback table drops are disabled by default to avoid deleting pre-existing auth data.
 
 ## API routes
@@ -263,6 +265,8 @@ BHERILA_AUTH_THROTTLE_DECAY_MINUTES=15
 # email | ip | email_ip (default)
 BHERILA_AUTH_THROTTLE_KEY=email_ip
 ```
+
+This package does not wrap arbitrary app `/login` routes. If the app disables package auth routes or owns primary login locally, the local login controller is responsible for inspecting the throttle before `Auth::attempt()` and recording blocked attempts.
 
 Use `BWH\Auth\Concerns\ThrottlesLoginAttempts` alongside `LogsAuthEvents`:
 

@@ -9,6 +9,8 @@ This repository contains:
 
 The packages intentionally keep app-specific policy outside the shared core. Apps decide whether a user can log in, where they go after login, and how audit events are recorded.
 
+Laravel apps that own their primary `/login` route must wire package opt-in features into that controller. For example, enabling the audit-log-backed throttle config does not by itself enforce lockout on a custom login controller; the app must call the Laravel package's throttle trait or contract before attempting credentials. See `laravel/README.md`.
+
 ## UI Installation
 
 `bwh-auth` is installed from GitHub Releases:
