@@ -32,6 +32,12 @@ return [
         'enabled' => env('BHERILA_AUTH_THROTTLE_ENABLED', false),
         'max_attempts' => env('BHERILA_AUTH_THROTTLE_MAX_ATTEMPTS', 5),
         'decay_minutes' => env('BHERILA_AUTH_THROTTLE_DECAY_MINUTES', 15),
+        // How failed attempts are grouped into a lockout key:
+        //   'email'    — per account: count an email's failures across all source IPs
+        //   'ip'       — per source: count an IP's failures across all emails
+        //   'email_ip' — per account+source pair (most conservative; default)
+        // Any other value falls back to 'email_ip'.
+        'key' => env('BHERILA_AUTH_THROTTLE_KEY', 'email_ip'),
         'record_blocked' => env('BHERILA_AUTH_THROTTLE_RECORD_BLOCKED', true),
     ],
 

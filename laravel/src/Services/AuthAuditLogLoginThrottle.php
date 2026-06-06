@@ -21,13 +21,21 @@ class AuthAuditLogLoginThrottle implements LoginThrottle
         $normalizedEmail = $this->normalizeEmail($email ?? $this->userEmail($user));
         $ipAddress = ClientIp::resolve($request);
 
-        if (! $this->enabled() || $maxAttempts < 1 || $decayMinutes < 1 || ($normalizedEmail === null && $ipAddress === null)) {
+        $key = $this->keyStrategy();
+        $useEmail = $key !== 'ip';
+        $useIp = $key !== 'email';
+
+        // The key is unusable when the dimensions this strategy relies on are all
+        // absent (e.g. 'email' strategy with no email, or an IP that won't resolve).
+        $hasUsableKey = ($useEmail && $normalizedEmail !== null) || ($useIp && $ipAddress !== null);
+
+        if (! $this->enabled() || $maxAttempts < 1 || $decayMinutes < 1 || ! $hasUsableKey) {
             return LoginThrottleState::allowed(false, 0, $maxAttempts, null, $normalizedEmail, $ipAddress, $method);
         }
 
         $windowStart = now()->subMinutes($decayMinutes);
-        $since = $this->latestSuccessAt($normalizedEmail, $ipAddress, $method, $windowStart) ?? $windowStart;
-        $failureTimes = $this->keyedQuery($normalizedEmail, $ipAddress, $method)
+        $since = $this->latestSuccessAt($useEmail, $useIp, $normalizedEmail, $ipAddress, $method, $windowStart) ?? $windowStart;
+        $failureTimes = $this->keyedQuery($useEmail, $useIp, $normalizedEmail, $ipAddress, $method)
             ->where('event', AuthAuditLog::EVENT_LOGIN_FAILED)
             ->where('created_at', '>=', $since)
             ->oldest('created_at')
@@ -95,9 +103,22 @@ class AuthAuditLogLoginThrottle implements LoginThrottle
         return max(0, (int) config('bherila-auth.throttle.decay_minutes', 15));
     }
 
-    protected function latestSuccessAt(?string $email, ?string $ipAddress, ?string $method, Carbon $windowStart): ?Carbon
+    /**
+     * Resolve the configured lockout key strategy, defaulting to 'email_ip' for
+     * any unrecognized value so a typo can never silently widen the key.
+     *
+     * @return 'email'|'ip'|'email_ip'
+     */
+    protected function keyStrategy(): string
     {
-        $createdAt = $this->keyedQuery($email, $ipAddress, $method)
+        $key = (string) config('bherila-auth.throttle.key', 'email_ip');
+
+        return in_array($key, ['email', 'ip', 'email_ip'], true) ? $key : 'email_ip';
+    }
+
+    protected function latestSuccessAt(bool $useEmail, bool $useIp, ?string $email, ?string $ipAddress, ?string $method, Carbon $windowStart): ?Carbon
+    {
+        $createdAt = $this->keyedQuery($useEmail, $useIp, $email, $ipAddress, $method)
             ->where('event', AuthAuditLog::EVENT_LOGIN_SUCCEEDED)
             ->where('created_at', '>=', $windowStart)
             ->latest('created_at')
@@ -107,16 +128,20 @@ class AuthAuditLogLoginThrottle implements LoginThrottle
     }
 
     /**
+     * Build the base query for the active key strategy. A dimension that is not
+     * part of the strategy is omitted entirely; a dimension that IS part of the
+     * strategy but has a null value matches rows whose column is null.
+     *
      * @return Builder<AuthAuditLog>
      */
-    protected function keyedQuery(?string $email, ?string $ipAddress, ?string $method): Builder
+    protected function keyedQuery(bool $useEmail, bool $useIp, ?string $email, ?string $ipAddress, ?string $method): Builder
     {
         return AuthAuditLog::query()
             ->when($method !== null, fn (Builder $query) => $query->where('auth_method', $method))
-            ->when($email !== null, fn (Builder $query) => $query->whereRaw('LOWER(email) = ?', [$email]))
-            ->when($email === null, fn (Builder $query) => $query->whereNull('email'))
-            ->when($ipAddress !== null, fn (Builder $query) => $query->where('ip_address', $this->packedIp($ipAddress)))
-            ->when($ipAddress === null, fn (Builder $query) => $query->whereNull('ip_address'));
+            ->when($useEmail && $email !== null, fn (Builder $query) => $query->whereRaw('LOWER(email) = ?', [$email]))
+            ->when($useEmail && $email === null, fn (Builder $query) => $query->whereNull('email'))
+            ->when($useIp && $ipAddress !== null, fn (Builder $query) => $query->where('ip_address', $this->packedIp($ipAddress)))
+            ->when($useIp && $ipAddress === null, fn (Builder $query) => $query->whereNull('ip_address'));
     }
 
     protected function normalizeEmail(?string $email): ?string
