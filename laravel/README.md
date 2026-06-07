@@ -244,12 +244,28 @@ Set `BHERILA_AUTH_AUDIT_ROUTES=true` to register read endpoints (the package shi
 
 ### Retention
 
-Retention is **off by default** (`bherila-auth.audit.retention_days = null`), so nothing is ever pruned. To enable pruning, set `BHERILA_AUTH_AUDIT_RETENTION_DAYS` and schedule Laravel's prune command:
+Retention is **off by default** (`bherila-auth.audit.retention_days = null`), so nothing is ever pruned. To enable pruning, set `BHERILA_AUTH_AUDIT_RETENTION_DAYS` and run the artisan command:
+
+```bash
+php artisan bherila-auth:prune-audit-log
+```
+
+The command deletes all rows older than `bherila-auth.audit.retention_days` and prints the count of removed rows. It is a no-op when `retention_days` is `null`.
+
+To run it automatically, add it to your application's scheduler (optional):
 
 ```php
 // bootstrap/app.php or a scheduler
+$schedule->command('bherila-auth:prune-audit-log')->daily();
+```
+
+You can also continue to use Laravel's built-in prune infrastructure if you prefer:
+
+```php
 Schedule::command('model:prune', ['--model' => [\BWH\Auth\Models\AuthAuditLog::class]])->daily();
 ```
+
+> **Since 0.4.2.** The `bherila-auth:prune-audit-log` artisan command was added in 0.4.2.
 
 > **Since 0.2.0.** The audit-log table, default database logger, `BinaryIpAddressCast`, `ClientIp`, the `LogsAuthEvents` trait, read endpoints, retention, and the `loginSucceeded`/`loginFailed`/`loggedOut` contract methods were added in 0.2.0. The contract gained methods; implementations should extend `BWH\Auth\Services\AbstractAuthAuditLogger` (which provides no-op defaults) rather than implementing the interface directly.
 
