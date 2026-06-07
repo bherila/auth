@@ -2,6 +2,7 @@
 
 namespace BWH\Auth;
 
+use BWH\Auth\Console\PruneAuthAuditLogCommand;
 use BWH\Auth\Contracts\AuthAuditLogger;
 use BWH\Auth\Contracts\AuthUserPolicy;
 use BWH\Auth\Contracts\LoginThrottle;
@@ -59,6 +60,10 @@ class AuthServiceProvider extends ServiceProvider
             Route::prefix(config('bherila-auth.routes.prefix', 'api'))
                 ->middleware(config('bherila-auth.routes.middleware', ['web']))
                 ->group(__DIR__.'/../routes/audit.php');
+        }
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([PruneAuthAuditLogCommand::class]);
         }
     }
 
