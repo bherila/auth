@@ -26,13 +26,34 @@ class TwoFactorService
         Mail::to($email)->send(new TwoFactorLoginMail(
             $user,
             $attempt,
-            route('bherila-auth.two-factor.confirm', ['token' => $attempt->token]),
-            route('bherila-auth.two-factor.report', ['token' => $attempt->token]),
+            $this->routeFromAppUrl('bherila-auth.two-factor.confirm', ['token' => $attempt->token]),
+            $this->routeFromAppUrl('bherila-auth.two-factor.report', ['token' => $attempt->token]),
             $appName,
         ));
 
         $this->auditLogger->twoFactorChallengeCreated($request, $user, $attempt);
 
         return $attempt;
+    }
+
+    /**
+     * Build a fully-qualified route URL rooted at the configured app.url
+     * rather than the incoming request host.
+     *
+     * These URLs are emailed during the login challenge, so deriving them
+     * from the request host would let an attacker poison them via a spoofed
+     * Host / X-Forwarded-Host header and point the victim's 2FA confirm or
+     * report link at an attacker-controlled domain (host-header injection).
+     */
+    private function routeFromAppUrl(string $name, array $parameters): string
+    {
+        $appUrl = rtrim((string) config('app.url'), '/');
+
+        if ($appUrl === '') {
+            // No app.url configured; fall back to the framework default.
+            return route($name, $parameters);
+        }
+
+        return $appUrl.route($name, $parameters, false);
     }
 }
