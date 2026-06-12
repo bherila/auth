@@ -4,12 +4,12 @@ Shared authentication packages for BWH Laravel/Vite applications.
 
 This repository contains:
 
-- `ui`: npm package `bwh-auth` for React auth UI and browser WebAuthn helpers.
-- `laravel`: Composer package `bherila/auth-laravel` for Laravel auth services, passkeys, migrations, routes, and extension contracts.
+- `ui`: pnpm package `bwh-auth` for React auth UI and browser WebAuthn helpers.
+- `php`: Composer package `bherila/auth-laravel` for Laravel auth services, passkeys, migrations, routes, and extension contracts. Its manifest is the repository-root `composer.json` (required for Composer VCS resolution); the source lives under `php/`.
 
 The packages intentionally keep app-specific policy outside the shared core. Apps decide whether a user can log in, where they go after login, and how audit events are recorded.
 
-Laravel apps that own their primary `/login` route must wire package opt-in features into that controller. For example, enabling the audit-log-backed throttle config does not by itself enforce lockout on a custom login controller; the app must call the Laravel package's throttle trait or contract before attempting credentials. See `laravel/README.md`.
+Laravel apps that own their primary `/login` route must wire package opt-in features into that controller. For example, enabling the audit-log-backed throttle config does not by itself enforce lockout on a custom login controller; the app must call the Laravel package's throttle trait or contract before attempting credentials. See `php/README.md`.
 
 ## UI Installation
 

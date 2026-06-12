@@ -1,6 +1,6 @@
 node_modules/
 ui/node_modules/
-laravel/vendor/
+php/vendor/
 /vendor/
 /composer.lock
 .phpunit.result.cache
