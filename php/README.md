@@ -41,7 +41,7 @@ If installing from GitHub before Packagist publication, add the repository to th
 }
 ```
 
-Then run `composer require bherila/auth-laravel:dev-main`. Composer reads the repository-root `composer.json`, which autoloads the Laravel package from `laravel/src`.
+Then run `composer require bherila/auth-laravel:dev-main`. Composer reads the repository-root `composer.json`, which autoloads the Laravel package from `php/src`.
 
 ## Configuration
 

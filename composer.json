@@ -23,12 +23,12 @@
   },
   "autoload": {
     "psr-4": {
-      "BWH\\Auth\\": "laravel/src/"
+      "BWH\\Auth\\": "php/src/"
     }
   },
   "autoload-dev": {
     "psr-4": {
-      "BWH\\Auth\\Tests\\": "laravel/tests/"
+      "BWH\\Auth\\Tests\\": "php/tests/"
     }
   },
   "scripts": {
