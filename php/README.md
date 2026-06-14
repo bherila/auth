@@ -11,6 +11,35 @@ Includes:
 - login audit logging: an owned `auth_audit_log` table, a default database logger, binary IP storage, optional read endpoints, and opt-in retention (see "Login audit logging")
 - policy and audit contracts for app-specific behavior
 
+## Upgrading to v0.5.0 (breaking)
+
+This release adds a required method to the `AuthUserPolicy` contract:
+
+```php
+public function canLogin(Authenticatable $user, Request $request): bool;
+```
+
+It is the single gate for account-state checks (active, approved, not disabled)
+and is now enforced by the new `RequireActiveUser` middleware on the package's
+audit routes, so a role-only admin gate can no longer let a pending or disabled
+account through.
+
+Because the contract gained a required method, this is a **breaking change** and
+must be released as **v0.5.0** (not a 0.4.x patch) so consumers opt in. Consuming
+apps that **implement `AuthUserPolicy` directly** must add `canLogin()` when they
+upgrade — typically delegating to their model:
+
+```php
+public function canLogin(Authenticatable $user, Request $request): bool
+{
+    return $user instanceof User && $user->canLogin() && $user->hasVerifiedEmail();
+}
+```
+
+Apps that extend `DefaultAuthUserPolicy` inherit a working `canLogin()` (it
+duck-types `$user->canLogin()`, falls back to `is_disabled`, defaults to `true`)
+and need no change.
+
 ## Install
 
 ```sh
