@@ -11,6 +11,35 @@ Includes:
 - login audit logging: an owned `auth_audit_log` table, a default database logger, binary IP storage, optional read endpoints, and opt-in retention (see "Login audit logging")
 - policy and audit contracts for app-specific behavior
 
+## Upgrading to v0.5.0 (breaking)
+
+This release adds a required method to the `AuthUserPolicy` contract:
+
+```php
+public function canLogin(Authenticatable $user, Request $request): bool;
+```
+
+It is the single gate for account-state checks (active, approved, not disabled)
+and is now enforced by the new `RequireActiveUser` middleware on the package's
+audit routes, so a role-only admin gate can no longer let a pending or disabled
+account through.
+
+Because the contract gained a required method, this is a **breaking change** and
+must be released as **v0.5.0** (not a 0.4.x patch) so consumers opt in. Consuming
+apps that **implement `AuthUserPolicy` directly** must add `canLogin()` when they
+upgrade — typically delegating to their model:
+
+```php
+public function canLogin(Authenticatable $user, Request $request): bool
+{
+    return $user instanceof User && $user->canLogin() && $user->hasVerifiedEmail();
+}
+```
+
+Apps that extend `DefaultAuthUserPolicy` inherit a working `canLogin()` (it
+duck-types `$user->canLogin()`, falls back to `is_disabled`, defaults to `true`)
+and need no change.
+
 ## Install
 
 ```sh
@@ -177,6 +206,70 @@ Views are loaded from the `bherila-auth::emails.*` namespace and can be overridd
 Bind `BWH\Auth\Contracts\AuthUserPolicy` when an app needs custom login gates or redirects.
 
 Bind `BWH\Auth\Contracts\AuthAuditLogger` only when an app wants to override the built-in audit behavior (for example, to mirror events into its own broader audit table). Most apps should instead use the database driver described below.
+
+### canLogin() — the single gate for account state
+
+`AuthUserPolicy::canLogin()` is the **single source of truth** for "is this account allowed to proceed through any login flow." The default implementation duck-types `$user->canLogin()` and falls back to checking `$user->is_disabled`. Apps with additional account-state columns (e.g. `approved_at`, `email_verified_at`, or a role whitelist) must bind a custom policy and encode **all** conditions in `canLogin()`:
+
+```php
+// app/Auth/AppUserPolicy.php
+class AppUserPolicy extends DefaultAuthUserPolicy
+{
+    public function canLogin(Authenticatable $user, Request $request): bool
+    {
+        return $user->approved_at !== null
+            && ! $user->is_disabled;
+    }
+}
+
+// AppServiceProvider::register()
+$this->app->bind(AuthUserPolicy::class, AppUserPolicy::class);
+```
+
+The package calls `canLogin()` automatically from:
+
+- `RequireActiveUser` middleware, applied to all package audit-log routes
+- `canPasskeyLogin()` in the default policy (passkey auth delegates here)
+- The 2FA `completeLogin()` path delegates through `redirectAfterLogin()`; if the user should be
+  blocked at that point, `canLogin()` must return false so the redirect sends them away from the app
+
+Apps must also call `canLogin()` from their own:
+
+1. **Primary password-login controller** — before `Auth::attempt()` or after resolving the user.
+2. **Email-verification callback** — after marking the email verified, call `canLogin()` and use
+   `redirectAfterLogin()` (not a hardcoded path) so a just-verified but still-pending user goes to
+   the pending page rather than into the app. Hardcoding `/pending` in the verification handler
+   causes approved users who verified their email to be falsely shown the pending page.
+
+### Protecting admin gates against pending/disabled accounts
+
+When setting `audit.admin_ability`, the Gate ability definition must verify **both** admin role and active-account state. The package applies `RequireActiveUser` on top, but your Gate definition should be correct independently (it may be called from other locations):
+
+```php
+// AppServiceProvider::boot()
+Gate::define('admin-only', function (User $user) {
+    // WRONG: only checks role — a pending admin bypasses account-state checks
+    // return $user->is_admin;
+
+    // CORRECT: role AND account state
+    return $user->is_admin
+        && $user->approved_at !== null
+        && ! $user->is_disabled;
+});
+```
+
+### Backfilling approved_at after adding an approval column
+
+If you add an `approved_at` (nullable, null = pending) column to your existing `users` table, every pre-existing row will be null after migration, instantly locking out all current users — including the primary admin. Before deploying the migration to production, add a backfill step in your migration (or a separate migration) to grandfather existing rows:
+
+```php
+// In your migration's up() method, after adding the column:
+DB::table('users')
+    ->whereNull('approved_at')
+    ->update(['approved_at' => now()]);
+```
+
+Alternatively, make null mean "approved" and use a different sentinel (e.g. a `pending` boolean), but document the convention clearly.
 
 ## Login audit logging
 
