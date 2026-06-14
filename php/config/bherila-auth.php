@@ -24,6 +24,11 @@ return [
         // null = retain forever (no pruning). Set a positive integer to enable `model:prune`.
         'retention_days' => env('BHERILA_AUTH_AUDIT_RETENTION_DAYS'),
         // Gate ability required for the cross-user admin endpoint; null disables that route.
+        // IMPORTANT: the ability must verify that the user is active/approved AND is an admin.
+        // The package enforces its own RequireActiveUser check on top of this gate, but the
+        // gate should still verify account state independently so your Gate definition is
+        // correct even when called from other locations. Example: check both ->is_admin and
+        // ->approved_at, not just the role.
         'admin_ability' => env('BHERILA_AUTH_AUDIT_ADMIN_ABILITY'),
     ],
 
