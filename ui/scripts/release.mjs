@@ -63,10 +63,6 @@ function assertCleanGit() {
   }
 }
 
-function assertGhAvailable() {
-  run('gh', ['auth', 'status'], { cwd: repoDir });
-}
-
 const args = parseArgs(process.argv.slice(2));
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
 const nextVersion = args.version ?? bumpVersion(packageJson.version, args.bump);
@@ -75,7 +71,6 @@ const assetName = `bwh-auth-${nextVersion}.tgz`;
 const assetPath = join(releaseDir, assetName);
 
 assertCleanGit();
-assertGhAvailable();
 
 try {
   run('git', ['rev-parse', '--verify', tag], { cwd: repoDir });
@@ -114,26 +109,15 @@ if (args.dryRun) {
   process.exit(0);
 }
 
+// Pushing the tag is the trigger: the release workflow
+// (.github/workflows/release.yml) builds, publishes bwh-auth to npm, and creates
+// the GitHub release with the packed tarball. Local pack above is validation only.
 runVisible('git', ['add', 'ui/package.json', 'pnpm-lock.yaml'], { cwd: repoDir });
 runVisible('git', ['commit', '-m', `Release bwh-auth v${nextVersion}`], { cwd: repoDir });
 runVisible('git', ['tag', tag], { cwd: repoDir });
 runVisible('git', ['push', 'origin', 'main'], { cwd: repoDir });
 runVisible('git', ['push', 'origin', tag], { cwd: repoDir });
 
-runVisible('gh', [
-  'release',
-  'create',
-  tag,
-  assetPath,
-  '--title',
-  `bwh-auth v${nextVersion}`,
-  '--notes',
-  `Release bwh-auth v${nextVersion}`,
-], { cwd: repoDir });
-
-const repo = run('gh', ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner'], { cwd: repoDir });
-const assetUrl = `https://github.com/${repo}/releases/download/${tag}/${assetName}`;
-
 console.log('');
-console.log(`Release created: ${tag}`);
-console.log(`Tarball URL: ${assetUrl}`);
+console.log(`Tagged and pushed: ${tag}`);
+console.log('The release workflow will publish bwh-auth to npm and create the GitHub release.');
