@@ -20,9 +20,10 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/bwh-auth-v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: prod # provides the NPM_TOKEN environment secret
+    environment: prod # scopes the npm OIDC trusted publisher to this environment
     permissions:
       contents: write # create the GitHub release
+      id-token: write # OIDC for npm trusted publishing (no NPM_TOKEN needed)
     steps:
       - uses: actions/checkout@v6
 
@@ -51,11 +52,15 @@ jobs:
         working-directory: ui
         run: pnpm pack --pack-destination "$RUNNER_TEMP"
 
+      # Trusted publishing: npm exchanges the GitHub OIDC token for a short-lived
+      # publish credential, so no NPM_TOKEN is needed. Provenance is attested
+      # automatically. Requires npm >= 11.5.0 (newer than the Node 24 bundle).
+      - name: Update npm
+        run: npm install -g npm@latest
+
       - name: Publish to npm
         working-directory: ui
-        run: pnpm publish --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
 
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/bwh-auth-v')
