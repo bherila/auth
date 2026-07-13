@@ -18,7 +18,7 @@ jobs:
   npm:
     name: Publish bwh-auth to npm
     if: startsWith(github.ref, 'refs/tags/bwh-auth-v')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     environment: prod # scopes the npm OIDC trusted publisher to this environment
     permissions:
@@ -74,7 +74,7 @@ jobs:
   packagist:
     name: Update Packagist (bherila/auth-laravel)
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     environment: prod # provides the PACKAGIST_TOKEN environment secret
     steps:

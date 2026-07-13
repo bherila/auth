@@ -17,7 +17,7 @@ permissions:
 jobs:
   changes:
     name: Detect changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     outputs:
       php: ${{ steps.filter.outputs.php }}
       js: ${{ steps.filter.outputs.js }}
@@ -45,7 +45,7 @@ jobs:
     name: PHP package (bherila/auth-laravel)
     needs: changes
     if: needs.changes.outputs.php == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -74,7 +74,7 @@ jobs:
     name: JS package (bwh-auth)
     needs: changes
     if: needs.changes.outputs.js == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
@@ -103,7 +103,7 @@ jobs:
     name: CI result
     needs: [changes, php, js]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Check result
         run: |
