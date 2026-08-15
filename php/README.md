@@ -4,6 +4,7 @@ Shared Laravel auth package for BWH applications.
 
 Includes:
 
+- OAuth 2.0 authorization-code client mechanics with PKCE and validated identity responses
 - WebAuthn/passkey registration and login
 - email-code 2FA challenge service, API routes, and mailables
 - password reset request/reset/change API routes and mailables
@@ -202,6 +203,37 @@ Included mailables for password reset, password reset/change notices, and email 
 Views are loaded from the `bherila-auth::emails.*` namespace and can be overridden by publishing Laravel views if needed.
 
 ## App Integration
+
+### OAuth client integration
+
+`BWH\Auth\OAuth\OAuthClient` owns state and PKCE generation, authorization redirects,
+authorization-code exchange, and validation of the provider identity response. The consuming
+application still owns local-user lookup/provisioning, account-state policy, login, auditing,
+and the post-login destination.
+
+Configure `OAUTH_PROVIDER`, `OAUTH_PROVIDER_URL`, `OAUTH_CLIENT_ID`,
+`OAUTH_CLIENT_SECRET`, and `OAUTH_REDIRECT_URI`, then delegate from the app controller:
+
+```php
+public function redirect(Request $request, OAuthClient $oauth): RedirectResponse
+{
+    return $oauth->redirect($request);
+}
+
+public function callback(Request $request, OAuthClient $oauth): RedirectResponse
+{
+    $identity = $oauth->identityFromCallback($request);
+    $user = $this->resolveLocalUser($identity);
+
+    Auth::login($user);
+    $request->session()->regenerate();
+
+    return redirect()->intended('/');
+}
+```
+
+The package deliberately does not match or bind users by email. That decision is
+application-specific and must not silently replace a trusted provider-subject binding.
 
 Bind `BWH\Auth\Contracts\AuthUserPolicy` when an app needs custom login gates or redirects.
 
