@@ -80,6 +80,11 @@ final class OAuthClient
         return $this->configuredValue('provider');
     }
 
+    public function providerBaseUrl(): string
+    {
+        return $this->configuredValue('base_url');
+    }
+
     private function validatedIdentity(Response $response): OAuthIdentity
     {
         abort_unless($response->successful(), 502, 'The identity provider did not return an account.');
