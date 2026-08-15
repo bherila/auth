@@ -110,11 +110,11 @@ The `/api/auth/two-factor/report/{token}` endpoint exposed by `bherila/auth-lara
 | Wrong autocomplete attributes confuse password managers | Password manager saves the wrong value or users disable the manager and reuse weak passwords. | Inputs set `autocomplete` hints (`current-password`, `new-password`, `email`, `one-time-code`) appropriate to each form. | Do not override `autocomplete` from app-side props; verify after refactors that the hints still reach the rendered `<input>`. |
 | Token leakage via Referer | Reset/2FA links open pages that load third-party resources, leaking tokens through `Referer`. | None in this package — pages are app-owned. | Set `Referrer-Policy: no-referrer` (or stricter) on reset/2FA pages; avoid third-party scripts and resources on those pages. |
 | Frontend telemetry captures secrets | Sentry/PostHog/LogRocket-style tools record password fields, 2FA codes, WebAuthn responses, or CSRF tokens. | Components do not call any logger; they only render. The package is silent on telemetry redaction. | Configure session-replay tools to mask all inputs by default and explicitly verify masking on auth pages; never log form state from app wrappers. |
-| Dependency/tarball compromise | Consumer installs malicious package artifact. | Package is released as a versioned GitHub tarball with built `dist`. | Pin tarball URLs in `package.json` to a specific tag/commit; commit `pnpm-lock.yaml` with integrity hashes; review release commits; restrict who can create releases. |
+| Dependency/package compromise | Consumer installs a malicious package artifact. | Package is published to npm through GitHub OIDC trusted publishing with provenance, after a verified signed release tag. | Pin an npm version or reviewed range; commit `pnpm-lock.yaml` with integrity hashes; review release commits and provenance; restrict who can create release tags. |
 
 ## Security checklist for consuming apps
 
-- Pin `bwh-auth` to a specific GitHub release tarball or lockfile entry.
+- Pin `bwh-auth` to a reviewed npm version or range and commit the lockfile.
 - Use same-origin relative endpoint URLs unless there is a documented reason not to.
 - Provide `csrfToken` explicitly or include a trusted Laravel CSRF meta tag.
 - Keep backend CSRF, auth middleware, validation, and rate limiting enabled.
