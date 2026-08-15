@@ -55,6 +55,14 @@ class OAuthClientTest extends TestCase
         $this->assertSame(session('oauth.login.state'), $query['state']);
     }
 
+    public function test_provider_metadata_is_exposed_from_the_validated_shared_config(): void
+    {
+        $client = app(OAuthClient::class);
+
+        $this->assertSame('test-provider', $client->providerName());
+        $this->assertSame('https://identity.example.test', $client->providerBaseUrl());
+    }
+
     public function test_callback_exchanges_code_and_returns_validated_identity(): void
     {
         Http::fake([
