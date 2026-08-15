@@ -58,20 +58,22 @@ Publish mail views only if the consuming app wants to customize the package emai
 php artisan vendor:publish --tag=bherila-auth-views
 ```
 
-If installing from GitHub before Packagist publication, add the repository to the consuming app:
+Consumers install from Packagist and should not add a GitHub VCS repository entry.
+For unreleased local package development only, use a Composer path repository:
 
 ```json
 {
   "repositories": [
     {
-      "type": "vcs",
-      "url": "https://github.com/bherila/auth"
+      "type": "path",
+      "url": "../auth",
+      "options": { "symlink": true }
     }
   ]
 }
 ```
 
-Then run `composer require bherila/auth-laravel:dev-main`. Composer reads the repository-root `composer.json`, which autoloads the Laravel package from `php/src`.
+Then run `composer require bherila/auth-laravel:@dev`. Composer reads the repository-root `composer.json`, which autoloads the Laravel package from `php/src`. Remove the path override before validating a published release.
 
 ## Configuration
 

@@ -22,21 +22,19 @@ or bundle a UI kit, Blade page wrappers, or application Vite entrypoints. Consum
 
 ## Install
 
-For app CI before npm publication, use the GitHub Release tarball. This is the recommended path because the tarball includes built `dist` files and does not require CI to build this package during dependency installation.
+Install the published package from npm:
 
 ```sh
-pnpm add https://github.com/bherila/auth/releases/download/bwh-auth-v0.2.0/bwh-auth-0.2.0.tgz
+pnpm add bwh-auth
 ```
 
-Or pin it manually in `package.json`:
+For a deliberately pinned version:
 
-```json
-{
-  "dependencies": {
-    "bwh-auth": "https://github.com/bherila/auth/releases/download/bwh-auth-v0.2.0/bwh-auth-0.2.0.tgz"
-  }
-}
+```sh
+pnpm add bwh-auth@0.2.0
 ```
+
+Commit `pnpm-lock.yaml`; consumers do not need a GitHub tarball URL.
 
 When installing locally during package development, a path dependency is still useful:
 
@@ -187,7 +185,7 @@ Passkey components default to the Laravel package routes:
 
 ## Releasing
 
-Create and upload a GitHub release from this package directory:
+Prepare a release from this package directory:
 
 ```sh
 pnpm release
@@ -201,9 +199,11 @@ The release script:
 - runs typecheck and build
 - creates `ui/release/bwh-auth-VERSION.tgz`
 - commits the version bump
-- creates and pushes a tag like `bwh-auth-v0.1.1`
-- creates a GitHub release with the tarball asset
-- prints the install URL
+- creates and pushes a signed tag like `bwh-auth-v0.1.1`
+
+The release workflow verifies the tag signature, publishes to npm through its
+trusted publisher, and creates a GitHub Release with the tarball as a secondary
+artifact.
 
 Version bump options:
 

@@ -114,7 +114,7 @@ if (args.dryRun) {
 // the GitHub release with the packed tarball. Local pack above is validation only.
 runVisible('git', ['add', 'ui/package.json', 'pnpm-lock.yaml'], { cwd: repoDir });
 runVisible('git', ['commit', '-m', `Release bwh-auth v${nextVersion}`], { cwd: repoDir });
-runVisible('git', ['tag', tag], { cwd: repoDir });
+runVisible('git', ['tag', '-s', '-a', tag, '-m', `Release bwh-auth v${nextVersion}`], { cwd: repoDir });
 runVisible('git', ['push', 'origin', 'main'], { cwd: repoDir });
 runVisible('git', ['push', 'origin', tag], { cwd: repoDir });
 
