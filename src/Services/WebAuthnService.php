@@ -76,7 +76,7 @@ class WebAuthnService
             timeout: (int) config('bherila-auth.passkeys.timeout', 60000),
         );
 
-        $request->session()->put(self::SESSION_REGISTER_OPTIONS, serialize($options));
+        $request->session()->put(self::SESSION_REGISTER_OPTIONS, $this->encodeOptions($options));
 
         return $this->creationOptionsToArray($options);
     }
@@ -88,7 +88,7 @@ class WebAuthnService
             throw new RuntimeException('No pending registration options found.');
         }
 
-        $options = unserialize($serializedOptions);
+        $options = $this->decodeOptions($serializedOptions);
         $credential = $this->deserializeCredential($credentialData);
 
         /** @var AuthenticatorAttestationResponse $response */
@@ -133,7 +133,7 @@ class WebAuthnService
             timeout: (int) config('bherila-auth.passkeys.timeout', 60000),
         );
 
-        $request->session()->put(self::SESSION_LOGIN_OPTIONS, serialize($options));
+        $request->session()->put(self::SESSION_LOGIN_OPTIONS, $this->encodeOptions($options));
 
         return $this->requestOptionsToArray($options);
     }
@@ -148,7 +148,7 @@ class WebAuthnService
             throw new RuntimeException('No pending authentication options found.');
         }
 
-        $options = unserialize($serializedOptions);
+        $options = $this->decodeOptions($serializedOptions);
         $credential = $this->deserializeCredential($credentialData);
         $storedCredential = $this->findStoredCredential($this->encodeCredentialId($credential->rawId));
 
@@ -206,6 +206,33 @@ class WebAuthnService
         }
 
         return $credential;
+    }
+
+    /**
+     * Encode pending ceremony options for storage in the session.
+     *
+     * The options carry a raw 32-byte random challenge, so their serialized form is
+     * binary and is not valid UTF-8. Sessions are stored as JSON, and json_encode()
+     * returns false on invalid UTF-8 — which does not fail loudly: the whole session
+     * is written as the encoding of `false`, discarding every other key it held,
+     * including the CSRF token and the authenticated user. The next request then
+     * reports that no ceremony is pending, naming the wrong culprit entirely.
+     *
+     * Base64 keeps the value inside the character set JSON can carry.
+     */
+    private function encodeOptions(object $options): string
+    {
+        return base64_encode(serialize($options));
+    }
+
+    private function decodeOptions(string $stored): mixed
+    {
+        // Values written before this was encoded are raw serialized data. In practice
+        // storing one destroyed the session, so none survive to be read — but decoding
+        // defensively costs nothing and keeps a rolling deploy from erroring.
+        $decoded = base64_decode($stored, true);
+
+        return unserialize($decoded === false ? $stored : $decoded);
     }
 
     private function deserializeCredential(array $credentialData): PublicKeyCredential
