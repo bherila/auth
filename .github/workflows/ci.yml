@@ -15,36 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  changes:
-    name: Detect changes
-    runs-on: ubuntu-24.04-arm
-    outputs:
-      php: ${{ steps.filter.outputs.php }}
-      js: ${{ steps.filter.outputs.js }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - uses: dorny/paths-filter@v4
-        id: filter
-        with:
-          filters: |
-            php:
-              - 'php/**'
-              - 'composer.json'
-              - 'composer.lock'
-              - 'phpunit.xml'
-              - '.github/workflows/**'
-            js:
-              - 'ui/**'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-              - '.github/workflows/**'
-
-  php:
-    name: PHP package (bherila/auth-laravel)
-    needs: changes
-    if: needs.changes.outputs.php == 'true'
+  test:
+    name: Laravel package (bherila/auth-laravel)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
@@ -67,50 +39,8 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist
 
+      - name: Validate Composer metadata
+        run: composer validate --strict --no-check-lock
+
       - name: Run PHPUnit
         run: composer test
-
-  js:
-    name: JS package (bwh-auth)
-    needs: changes
-    if: needs.changes.outputs.js == 'true'
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.12.0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Type-check
-        run: pnpm --filter bwh-auth run typecheck
-
-      - name: Build
-        run: pnpm --filter bwh-auth run build
-
-  result:
-    name: CI result
-    needs: [changes, php, js]
-    if: always()
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - name: Check result
-        run: |
-          for r in "${{ needs.changes.result }}" "${{ needs.php.result }}" "${{ needs.js.result }}"; do
-            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
-              echo "A required job failed: $r"
-              exit 1
-            fi
-          done
-          echo "Required checks passed or no matching paths changed."
