@@ -19,6 +19,7 @@ class PasskeyCredential extends Model
         'name',
         'transports',
         'last_used_at',
+        'rp_id',
     ];
 
     protected $casts = [

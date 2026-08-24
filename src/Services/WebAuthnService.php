@@ -8,6 +8,7 @@ use Cose\Algorithm\Signature\RSA\RS256;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Component\Uid\Uuid;
@@ -106,6 +107,7 @@ class WebAuthnService
             'aaguid' => $source->aaguid->toRfc4122(),
             'name' => $name ?: 'Passkey',
             'transports' => $source->transports,
+            'rp_id' => $this->getRpId($request),
         ]);
     }
 
@@ -215,9 +217,41 @@ class WebAuthnService
         );
     }
 
+    /**
+     * The relying-party ID that credentials are bound to.
+     *
+     * A credential can only ever be used against the RP ID it was registered with, or a
+     * host for which that RP ID is a registrable-domain suffix. Deriving it from the
+     * request host therefore binds every credential to whichever hostname happened to
+     * serve the registration page, so a later move to a sibling subdomain silently
+     * invalidates every existing passkey with no way to detect it beforehand.
+     *
+     * Configuring the registrable domain instead (`bherila.net`) binds credentials once,
+     * for every current and future subdomain. The configured value is only honoured when
+     * it is actually usable for the requesting host — equal to it, or a suffix of it —
+     * because a value the browser would reject produces credentials that can never
+     * authenticate. Anything else falls back to the host and warns, so local development
+     * on `localhost` keeps working against a production-shaped configuration.
+     */
     private function getRpId(Request $request): string
     {
-        return $request->getHost();
+        $host = $request->getHost();
+        $configured = config('bherila-auth.passkeys.rp_id');
+
+        if (! is_string($configured) || $configured === '') {
+            return $host;
+        }
+
+        if ($host === $configured || str_ends_with($host, '.'.$configured)) {
+            return $configured;
+        }
+
+        Log::warning('Configured WebAuthn relying-party ID is not usable for this host; falling back to the request host.', [
+            'configured_rp_id' => $configured,
+            'request_host' => $host,
+        ]);
+
+        return $host;
     }
 
     private function createSerializer(): SerializerInterface

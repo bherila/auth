@@ -120,6 +120,11 @@ return [
     'passkeys' => [
         'table' => 'auth_passkeys',
         'rp_name' => env('WEBAUTHN_RP_NAME', env('APP_NAME', 'App')),
+        // The registrable domain credentials bind to. Set this once per deployment
+        // (for example `example.com`) so credentials stay valid across every subdomain
+        // rather than being pinned to whichever host served the registration page.
+        // Leave unset in local development to derive it from the request host.
+        'rp_id' => env('WEBAUTHN_RP_ID'),
         'allowed_origins' => array_filter(array_map('trim', explode(',', env('WEBAUTHN_ALLOWED_ORIGINS', '')))),
         'timeout' => 60000,
         'resident_key' => env('WEBAUTHN_RESIDENT_KEY', 'preferred'),
