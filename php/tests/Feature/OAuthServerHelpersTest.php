@@ -89,6 +89,21 @@ class OAuthServerHelpersTest extends TestCase
             'scopes_supported' => ['identity:read', 'mcp:use'],
             'bearer_methods_supported' => ['header'],
         ]);
+
+        config([
+            'bherila-auth.oauth_server.issuer' => 'https://auth.example.test/tenant/',
+            'bherila-auth.oauth_server.resource' => 'https://auth.example.test/api/v1/',
+        ]);
+        $this->getJson('/metadata/authorization-test')
+            ->assertJsonPath('issuer', 'https://auth.example.test/tenant/');
+        $this->getJson('/metadata/resource-test')
+            ->assertJsonPath('resource', 'https://auth.example.test/api/v1/');
+        $this->assertSame('https://auth.example.test/api/v1/', OAuthResourceIndicator::resource());
+
+        config([
+            'bherila-auth.oauth_server.issuer' => 'https://auth.example.test',
+            'bherila-auth.oauth_server.resource' => 'https://auth.example.test/api/v1',
+        ]);
     }
 
     public function test_dynamic_registration_accepts_codex_native_metadata_and_ignores_unknown_fields(): void

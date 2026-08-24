@@ -222,6 +222,14 @@ protocol and consent UX without enabling any routes automatically. Configure
 
 The application remains responsible for its scope catalog, Passport token repository
 bindings, authorization policy, throttling, MCP tool catalog, and MCP instructions.
+Dynamic registration also deliberately does not alter Passport's application-owned
+schema. Before exposing the registration route, add an app migration for every column
+listed in `oauth_server.dynamic_clients.required_columns`; the default configuration
+expects a nullable, indexed `dynamically_registered_at` timestamp. Add the optional
+last-used and scopes columns only when the corresponding configuration enables them.
+The controller returns `503 temporarily_unavailable` until all configured columns are
+present, so a missing migration fails closed.
+
 Unknown dynamic-registration metadata is ignored as required by RFC 7591, while the
 fields used to create a public client are bounded and validated. Redirect URIs must
 use HTTPS or loopback HTTP, authorization requests require S256 PKCE, and a configured

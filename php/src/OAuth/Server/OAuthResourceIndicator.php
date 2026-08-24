@@ -12,12 +12,11 @@ final class OAuthResourceIndicator
     public static function resource(): string
     {
         $resource = config('bherila-auth.oauth_server.resource');
-        $canonical = self::canonicalize($resource);
-        if ($canonical === null) {
+        if (! is_string($resource) || self::canonicalize($resource) === null) {
             throw new RuntimeException('The OAuth protected resource is not configured.');
         }
 
-        return $canonical;
+        return $resource;
     }
 
     public static function canonicalize(mixed $value): ?string

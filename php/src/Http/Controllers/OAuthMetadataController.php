@@ -55,7 +55,7 @@ final class OAuthMetadataController
     {
         $value = config("bherila-auth.oauth_server.{$key}");
 
-        return is_string($value) ? rtrim($value, '/') : '';
+        return is_string($value) ? $value : '';
     }
 
     /** @param array<string, mixed> $payload */
