@@ -25,6 +25,43 @@ return [
         'identity_path' => '/api/oauth/user',
     ],
 
+    // Optional OAuth authorization-server helpers for applications exposing an
+    // MCP or other protected API through Laravel Passport. Routes remain owned
+    // by the application so this package never enables an authorization server
+    // merely by being installed.
+    'oauth_server' => [
+        'issuer' => env('APP_URL', 'http://localhost'),
+        'resource' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1',
+        'authorization_endpoint' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/oauth/authorize',
+        'token_endpoint' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/oauth/token',
+        'registration_endpoint' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/oauth/register',
+        'scopes' => [],
+        'token_endpoint_auth_methods' => ['none'],
+        'resource_required_scope' => 'mcp:use',
+        'dynamic_clients' => [
+            'required_columns' => ['dynamically_registered_at'],
+            'registered_at_column' => 'dynamically_registered_at',
+            'last_used_at_column' => null,
+            'scopes_column' => null,
+            'enforce_registered_scopes' => false,
+        ],
+        'authorization_state' => [
+            'cache_prefix' => 'oauth-resource:',
+            'ttl_seconds' => null,
+        ],
+        'consent' => [
+            'app_name' => env('APP_NAME', 'Application'),
+            'heading' => 'Connect :client to :app?',
+            'intro' => 'This application is requesting access to your :app account.',
+            'identity' => true,
+            'trust_warning' => 'Only continue if you recognize and trust this application. You can disconnect it later.',
+            'dynamic_client_warning' => 'This application registered automatically. After approval, your browser returns to:',
+            'policy_notice' => 'Your current permissions still apply to every request.',
+            'approve_label' => 'Authorize',
+            'deny_label' => 'Cancel',
+        ],
+    ],
+
     'migrations' => [
         'drop_tables_on_rollback' => false,
     ],

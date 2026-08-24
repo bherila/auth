@@ -5,6 +5,8 @@ Shared Laravel auth package for BWH applications.
 Includes:
 
 - OAuth 2.0 authorization-code client mechanics with PKCE and validated identity responses
+- opt-in Passport authorization-server helpers for metadata, dynamic public-client registration,
+  S256 PKCE, RFC 8707 resource binding, and a shared consent experience
 - WebAuthn/passkey registration and login
 - email-code 2FA challenge service, API routes, and mailables
 - password reset request/reset/change API routes and mailables
@@ -205,6 +207,29 @@ Included mailables for password reset, password reset/change notices, and email 
 Views are loaded from the `bherila-auth::emails.*` namespace and can be overridden by publishing Laravel views if needed.
 
 ## App Integration
+
+### OAuth authorization-server integration
+
+Applications exposing a Passport-protected API can reuse the package's server-side
+protocol and consent UX without enabling any routes automatically. Configure
+`bherila-auth.oauth_server`, then point application-owned routes and middleware at:
+
+- `BWH\Auth\Http\Controllers\OAuthMetadataController`
+- `BWH\Auth\Http\Controllers\OAuthDynamicClientRegistrationController`
+- `BWH\Auth\Http\Middleware\EnforceOAuthPkce`
+- `BWH\Auth\Http\Middleware\EnforceOAuthResourceIndicator`
+- `bherila-auth::oauth.authorize`
+
+The application remains responsible for its scope catalog, Passport token repository
+bindings, authorization policy, throttling, MCP tool catalog, and MCP instructions.
+Unknown dynamic-registration metadata is ignored as required by RFC 7591, while the
+fields used to create a public client are bounded and validated. Redirect URIs must
+use HTTPS or loopback HTTP, authorization requests require S256 PKCE, and a configured
+resource-required scope cannot be authorized without the matching resource indicator.
+
+The shared consent view uses `oauth_server.consent` copy and labels so applications can
+retain domain-specific language without copying security-sensitive forms or styling.
+It warns when a client registered dynamically and shows the validated return URI.
 
 ### OAuth client integration
 

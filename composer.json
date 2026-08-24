@@ -19,7 +19,11 @@
     "web-auth/webauthn-lib": "^5.2"
   },
   "require-dev": {
+    "laravel/passport": "^13.0",
     "orchestra/testbench": "^10.0"
+  },
+  "suggest": {
+    "laravel/passport": "Required only when using the optional OAuth authorization-server helpers."
   },
   "autoload": {
     "psr-4": {
