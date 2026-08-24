@@ -31,9 +31,22 @@ jobs:
     steps:
       - name: Notify Packagist
         run: |
+          repository_url="$(
+            curl -fsSL 'https://packagist.org/packages/bherila/auth-laravel.json' |
+              jq -r '.package.repository'
+          )"
+          case "${repository_url}" in
+            https://github.com/bherila/auth|https://github.com/bherila/auth-laravel)
+              ;;
+            *)
+              echo "Unexpected Packagist repository URL: ${repository_url}"
+              exit 1
+              ;;
+          esac
+          payload="$(jq -cn --arg url "${repository_url}" '{repository:{url:$url}}')"
           curl -sf -XPOST -H 'content-type:application/json' \
             "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_TOKEN}" \
-            -d '{"repository":{"url":"https://github.com/bherila/auth-laravel"}}'
+            -d "${payload}"
         env:
           PACKAGIST_USERNAME: bherila
           PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
