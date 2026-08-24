@@ -196,6 +196,12 @@ class OAuthServerHelpersTest extends TestCase
             $this->assertSame(400, $authorizationResponse->getStatusCode());
             $this->assertStringContainsString('invalid_target', (string) $authorizationResponse->getContent());
 
+            $authorization->query->set('scope', '   ');
+            $emptyScopeResponse = app(EnforceOAuthResourceIndicator::class)
+                ->handle($authorization, fn () => response('next'));
+            $this->assertSame(400, $emptyScopeResponse->getStatusCode());
+            $this->assertStringContainsString('invalid_target', (string) $emptyScopeResponse->getContent());
+
             $token = Request::create('/oauth/token', 'POST', [
                 'resource' => 'https://other.example.test/api/v1',
             ]);

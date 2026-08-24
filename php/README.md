@@ -227,6 +227,8 @@ schema. Before exposing the registration route, add an app migration for every c
 listed in `oauth_server.dynamic_clients.required_columns`; the default configuration
 expects a nullable, indexed `dynamically_registered_at` timestamp. Add the optional
 last-used and scopes columns only when the corresponding configuration enables them.
+If a custom scopes column is used, the configured Passport client model must cast it
+to an array (or store a JSON/string list the middleware can normalize).
 The controller returns `503 temporarily_unavailable` until all configured columns are
 present, so a missing migration fails closed.
 

@@ -47,6 +47,9 @@ final class EnforceOAuthResourceIndicator
             $scopes = Passport::defaultScopes();
         } elseif (is_string($scopeInput)) {
             $scopes = DynamicClientRegistrationValidator::parseScopes($scopeInput);
+            if ($scopes === []) {
+                $scopes = Passport::defaultScopes();
+            }
         } else {
             return $this->invalidScope();
         }
@@ -125,7 +128,29 @@ final class EnforceOAuthResourceIndicator
             return true;
         }
 
-        return array_filter($scopes, static fn (string $scope): bool => ! $client->hasScope($scope)) === [];
+        $scopesColumn = config('bherila-auth.oauth_server.dynamic_clients.scopes_column');
+        if (! is_string($scopesColumn) || $scopesColumn === '') {
+            return false;
+        }
+        $registeredScopes = $client->getAttribute($scopesColumn);
+        if ($registeredScopes === null) {
+            return true;
+        }
+        if (is_string($registeredScopes)) {
+            $decoded = json_decode($registeredScopes, true);
+            $registeredScopes = is_array($decoded)
+                ? $decoded
+                : DynamicClientRegistrationValidator::parseScopes($registeredScopes);
+        }
+        if (! is_array($registeredScopes)) {
+            return false;
+        }
+        $allowedScopes = array_values(array_filter(
+            $registeredScopes,
+            static fn (mixed $scope): bool => is_string($scope) && $scope !== '',
+        ));
+
+        return array_diff($scopes, $allowedScopes) === [];
     }
 
     /** @return list<string> */
