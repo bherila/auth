@@ -5,7 +5,7 @@ Shared authentication packages for BWH Laravel/Vite applications.
 This repository contains:
 
 - `ui`: pnpm package `bwh-auth` for React auth UI and browser WebAuthn helpers.
-- `php`: Composer package `bherila/auth-laravel` for Laravel OAuth clients, passkeys, auth services, migrations, routes, and extension contracts. Its manifest is the repository-root `composer.json`; the source lives under `php/`.
+- `php`: Composer package `bherila/auth-laravel` for Laravel OAuth clients, opt-in Passport authorization-server protocol and consent UX, passkeys, auth services, migrations, routes, and extension contracts. Its manifest is the repository-root `composer.json`; the source lives under `php/`.
 
 The packages intentionally keep app-specific policy outside the shared core. Apps decide whether a user can log in, where they go after login, and how audit events are recorded.
 
@@ -30,6 +30,11 @@ composer require bherila/auth-laravel
 ```
 
 Consumers do not need a Composer VCS repository entry or a GitHub URI.
+
+Applications exposing MCP or another Passport-protected API can also reuse the
+package's metadata, dynamic public-client registration, PKCE/resource middleware,
+and consent view. The application continues to own its routes, scope catalog,
+authorization policy, MCP tools, and MCP instructions. See `php/README.md`.
 
 ## Releases
 
