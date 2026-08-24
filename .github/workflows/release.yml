@@ -1,15 +1,9 @@
 name: Release
 
-# Tag-triggered publishing. The two packages in this repo version independently:
-#   - bwh-auth-v*  → JS package (ui/) published to npm + a GitHub release
-#   - v*           → PHP package (bherila/auth-laravel) refreshed on Packagist
-# `v*` does not match `bwh-auth-v*` (different leading char), so each job runs
-# only for its own tag scheme.
 on:
   push:
     tags:
       - 'v*'
-      - 'bwh-auth-v*'
 
 permissions:
   contents: read
@@ -28,78 +22,18 @@ jobs:
           verified="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_sha}" --jq '.verification.verified')"
           test "${verified}" = "true"
 
-  npm:
-    name: Publish bwh-auth to npm
-    if: startsWith(github.ref, 'refs/tags/bwh-auth-v')
-    needs: verify-tag
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    environment: prod # scopes the npm OIDC trusted publisher to this environment
-    permissions:
-      contents: write # create the GitHub release
-      id-token: write # OIDC for npm trusted publishing (no NPM_TOKEN needed)
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.12.0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          cache: pnpm
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Type-check
-        run: pnpm --filter bwh-auth run typecheck
-
-      - name: Build
-        run: pnpm --filter bwh-auth run build
-
-      - name: Pack tarball
-        working-directory: ui
-        run: pnpm pack --pack-destination "$RUNNER_TEMP"
-
-      # Trusted publishing: npm exchanges the GitHub OIDC token for a short-lived
-      # publish credential, so no NPM_TOKEN is needed. Provenance is attested
-      # automatically. Requires npm >= 11.5.0 (newer than the Node 24 bundle).
-      - name: Update npm
-        run: npm install -g npm@latest
-
-      - name: Publish to npm
-        working-directory: ui
-        run: npm publish --access public --provenance
-
-      - name: Create GitHub release
-        if: startsWith(github.ref, 'refs/tags/bwh-auth-v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "${GITHUB_REF_NAME}" "$RUNNER_TEMP"/*.tgz \
-            --title "${GITHUB_REF_NAME}" \
-            --notes "Automated release of ${GITHUB_REF_NAME}."
-
   packagist:
     name: Update Packagist (bherila/auth-laravel)
-    if: startsWith(github.ref, 'refs/tags/v')
     needs: verify-tag
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
-    environment: prod # provides the PACKAGIST_TOKEN environment secret
+    environment: prod
     steps:
-      # Username is the Packagist account name (not secret). Update it if the
-      # owner of PACKAGIST_TOKEN differs from "bherila".
       - name: Notify Packagist
         run: |
           curl -sf -XPOST -H 'content-type:application/json' \
             "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_TOKEN}" \
-            -d '{"repository":{"url":"https://github.com/bherila/auth"}}'
+            -d '{"repository":{"url":"https://github.com/bherila/auth-laravel"}}'
         env:
           PACKAGIST_USERNAME: bherila
           PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}

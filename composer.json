@@ -3,6 +3,11 @@
   "description": "Shared Laravel authentication services for BWH applications.",
   "type": "library",
   "license": "MIT",
+  "homepage": "https://github.com/bherila/auth-laravel",
+  "support": {
+    "issues": "https://github.com/bherila/auth-laravel/issues",
+    "source": "https://github.com/bherila/auth-laravel"
+  },
   "require": {
     "php": "^8.2",
     "illuminate/auth": "^12.0 || ^13.0",
@@ -27,12 +32,12 @@
   },
   "autoload": {
     "psr-4": {
-      "BWH\\Auth\\": "php/src/"
+      "BWH\\Auth\\": "src/"
     }
   },
   "autoload-dev": {
     "psr-4": {
-      "BWH\\Auth\\Tests\\": "php/tests/"
+      "BWH\\Auth\\Tests\\": "tests/"
     }
   },
   "scripts": {
