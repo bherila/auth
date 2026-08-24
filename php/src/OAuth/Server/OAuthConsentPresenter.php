@@ -6,6 +6,23 @@ use Illuminate\Http\Request;
 
 final class OAuthConsentPresenter
 {
+    public function isDynamicClient(object $client): bool
+    {
+        $column = config(
+            'bherila-auth.oauth_server.dynamic_clients.registered_at_column',
+            'dynamically_registered_at',
+        );
+        if (! is_string($column) || $column === '') {
+            return false;
+        }
+
+        $value = method_exists($client, 'getAttribute')
+            ? $client->getAttribute($column)
+            : ($client->{$column} ?? null);
+
+        return $value !== null;
+    }
+
     public function redirectUri(Request $request, object $client): ?string
     {
         $requested = $request->query('redirect_uri');

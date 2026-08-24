@@ -7,7 +7,7 @@ use RuntimeException;
 
 final class OAuthResourceIndicator
 {
-    public const string REQUEST_ATTRIBUTE = 'bherila_auth_oauth_resource';
+    public const REQUEST_ATTRIBUTE = 'bherila_auth_oauth_resource';
 
     public static function resource(): string
     {

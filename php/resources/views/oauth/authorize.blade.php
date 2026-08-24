@@ -53,7 +53,7 @@
     @if (is_string($consentConfig['trust_warning'] ?? null) && $consentConfig['trust_warning'] !== '')
         <p class="warning">{{ $copy('trust_warning', '') }}</p>
     @endif
-    @if (($client->dynamically_registered_at ?? null) && is_string($consentConfig['dynamic_client_warning'] ?? null))
+    @if ($consent->isDynamicClient($client) && is_string($consentConfig['dynamic_client_warning'] ?? null))
         <p class="warning">
             {{ $copy('dynamic_client_warning', '') }}
             @if ($redirectUri = $consent->redirectUri($request, $client))

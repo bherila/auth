@@ -28,9 +28,13 @@ final class EnforceOAuthResourceIndicator
         }
 
         if ($request->routeIs('passport.token') && $request->exists('resource')) {
-            if (OAuthResourceIndicator::canonicalize($request->input('resource')) === null) {
+            if (! OAuthResourceIndicator::isConfiguredResource($request->input('resource'))) {
                 return $this->invalidResource();
             }
+            $request->attributes->set(
+                OAuthResourceIndicator::REQUEST_ATTRIBUTE,
+                OAuthResourceIndicator::resource(),
+            );
         }
 
         return $next($request);
@@ -38,11 +42,14 @@ final class EnforceOAuthResourceIndicator
 
     private function authorizationRequest(Request $request, Closure $next): Response
     {
-        $scopeInput = $request->query('scope', '');
-        if (! is_string($scopeInput)) {
+        $scopeInput = $request->query('scope');
+        if ($scopeInput === null) {
+            $scopes = Passport::defaultScopes();
+        } elseif (is_string($scopeInput)) {
+            $scopes = DynamicClientRegistrationValidator::parseScopes($scopeInput);
+        } else {
             return $this->invalidScope();
         }
-        $scopes = DynamicClientRegistrationValidator::parseScopes($scopeInput);
         $knownScopes = $this->configuredScopes();
         if (array_diff($scopes, $knownScopes) !== []) {
             return $this->invalidScope();

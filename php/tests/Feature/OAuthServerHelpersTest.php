@@ -4,6 +4,7 @@ namespace BWH\Auth\Tests\Feature;
 
 use BWH\Auth\Http\Controllers\OAuthMetadataController;
 use BWH\Auth\Http\Middleware\EnforceOAuthPkce;
+use BWH\Auth\Http\Middleware\EnforceOAuthResourceIndicator;
 use BWH\Auth\OAuth\Server\DynamicClientRegistrationValidator;
 use BWH\Auth\OAuth\Server\InvalidClientMetadata;
 use BWH\Auth\OAuth\Server\OAuthAuthorizationStateStore;
@@ -12,6 +13,7 @@ use BWH\Auth\Tests\TestCase;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Route;
+use Laravel\Passport\Passport;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 class OAuthServerHelpersTest extends TestCase
@@ -163,6 +165,43 @@ class OAuthServerHelpersTest extends TestCase
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
     }
 
+    public function test_resource_middleware_applies_default_scopes_and_rejects_unconfigured_token_targets(): void
+    {
+        Passport::defaultScopes(['mcp:use']);
+
+        try {
+            $authorization = Request::create('/oauth/authorize', 'GET');
+            $authorization->setRouteResolver(static function (): RoutingRoute {
+                return (new RoutingRoute('GET', '/oauth/authorize', fn () => 'next'))
+                    ->name('passport.authorizations.authorize');
+            });
+            $authorizationResponse = app(EnforceOAuthResourceIndicator::class)
+                ->handle($authorization, fn () => response('next'));
+            $this->assertSame(400, $authorizationResponse->getStatusCode());
+            $this->assertStringContainsString('invalid_target', (string) $authorizationResponse->getContent());
+
+            $token = Request::create('/oauth/token', 'POST', [
+                'resource' => 'https://other.example.test/api/v1',
+            ]);
+            $token->setRouteResolver(static function (): RoutingRoute {
+                return (new RoutingRoute('POST', '/oauth/token', fn () => 'next'))
+                    ->name('passport.token');
+            });
+            $tokenResponse = app(EnforceOAuthResourceIndicator::class)
+                ->handle($token, fn () => response('next'));
+            $this->assertSame(400, $tokenResponse->getStatusCode());
+
+            $token->request->set('resource', 'https://auth.example.test/api/v1/');
+            $accepted = app(EnforceOAuthResourceIndicator::class)
+                ->handle($token, fn (Request $request) => response(
+                    OAuthResourceIndicator::validatedFor($request) ?? 'missing',
+                ));
+            $this->assertSame('https://auth.example.test/api/v1', $accepted->getContent());
+        } finally {
+            Passport::defaultScopes([]);
+        }
+    }
+
     public function test_resource_indicator_is_canonical_and_authorization_state_falls_back_to_cache(): void
     {
         $this->assertSame(
@@ -187,7 +226,9 @@ class OAuthServerHelpersTest extends TestCase
         {
             public string $name = 'Synthetic Harness';
 
-            public string $dynamically_registered_at = '2026-08-23 12:00:00';
+            public ?string $dynamically_registered_at = '2026-08-23 12:00:00';
+
+            public ?string $registered_on = null;
 
             /** @var list<string> */
             public array $redirect_uris = ['http://127.0.0.1:1455/callback'];
@@ -209,6 +250,18 @@ class OAuthServerHelpersTest extends TestCase
         $this->assertStringContainsString('Connect through MCP', $html);
         $this->assertStringContainsString('http://127.0.0.1:1455/callback', $html);
         $this->assertStringContainsString('name="auth_token" value="synthetic-auth-token"', $html);
+
+        config(['bherila-auth.oauth_server.dynamic_clients.registered_at_column' => 'registered_on']);
+        $client->registered_on = '2026-08-23 12:00:00';
+        $client->dynamically_registered_at = null;
+        $configuredMarkerHtml = view('bherila-auth::oauth.authorize', [
+            'client' => $client,
+            'user' => $user,
+            'scopes' => [$scope],
+            'authToken' => 'synthetic-auth-token',
+            'request' => $request,
+        ])->render();
+        $this->assertStringContainsString('registered automatically', $configuredMarkerHtml);
     }
 
     /** @param array<string, mixed> $metadata */

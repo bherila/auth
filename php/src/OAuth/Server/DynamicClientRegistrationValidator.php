@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Validator;
 
 final class DynamicClientRegistrationValidator
 {
-    private const int MAX_BODY_BYTES = 16_384;
+    private const MAX_BODY_BYTES = 16_384;
 
     /**
      * @param  list<string>  $allowedScopes
