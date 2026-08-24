@@ -99,6 +99,7 @@ class OAuthServerHelpersTest extends TestCase
         $this->getJson('/metadata/resource-test')
             ->assertJsonPath('resource', 'https://auth.example.test/api/v1/');
         $this->assertSame('https://auth.example.test/api/v1/', OAuthResourceIndicator::resource());
+        $this->assertTrue(OAuthResourceIndicator::isConfiguredResource('https://auth.example.test/api/v1/'));
 
         config([
             'bherila-auth.oauth_server.issuer' => 'https://auth.example.test',

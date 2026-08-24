@@ -51,7 +51,7 @@ final class OAuthResourceIndicator
 
     public static function isConfiguredResource(mixed $value): bool
     {
-        return self::canonicalize($value) === self::resource();
+        return self::canonicalize($value) === self::canonicalize(self::resource());
     }
 
     public static function validatedFor(Request $request): ?string

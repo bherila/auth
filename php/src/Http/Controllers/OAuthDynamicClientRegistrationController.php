@@ -7,8 +7,8 @@ use BWH\Auth\OAuth\Server\DynamicClientRegistrationValidator;
 use BWH\Auth\OAuth\Server\InvalidClientMetadata;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Schema;
 use Laravel\Passport\ClientRepository;
+use Laravel\Passport\Passport;
 
 final class OAuthDynamicClientRegistrationController
 {
@@ -18,7 +18,12 @@ final class OAuthDynamicClientRegistrationController
         DynamicClientRegistrationValidator $validator,
     ): JsonResponse {
         $columns = $this->dynamicClientConfig('required_columns', ['dynamically_registered_at']);
-        if (! is_array($columns) || ! Schema::hasColumns('oauth_clients', $columns)) {
+        $clientModel = Passport::client();
+        if (! is_array($columns)
+            || ! $clientModel->getConnection()->getSchemaBuilder()->hasColumns(
+                $clientModel->getTable(),
+                $columns,
+            )) {
             return $this->noStore(['error' => 'temporarily_unavailable'], 503);
         }
 
