@@ -24,6 +24,7 @@ class OAuthClientTest extends TestCase
             'authorize_path' => '/oauth/authorize',
             'token_path' => '/oauth/token',
             'identity_path' => '/api/oauth/user',
+            'end_session_path' => '/oauth/end-session',
         ]]);
 
         Route::middleware('web')->group(function (): void {
@@ -36,6 +37,7 @@ class OAuthClientTest extends TestCase
                     'subject' => $identity->subject,
                     'name' => $identity->name,
                     'email' => $identity->email,
+                    'apps' => $identity->apps,
                 ]);
             });
         });
@@ -84,6 +86,8 @@ class OAuthClientTest extends TestCase
             'subject' => 'subject-123',
             'name' => 'Synthetic User',
             'email' => 'synthetic@example.test',
+            // A provider that sends no application list yields none, rather than failing.
+            'apps' => [],
         ]);
 
         Http::assertSentCount(2);
@@ -102,4 +106,84 @@ class OAuthClientTest extends TestCase
 
         Http::assertNothingSent();
     }
+    /**
+     * @return array<string, mixed>
+     */
+    private function identityPayload(mixed $apps): array
+    {
+        return array_filter([
+            'sub' => '42',
+            'name' => 'Account Holder',
+            'email' => 'person@example.test',
+            'apps' => $apps,
+        ], static fn (mixed $value): bool => $value !== null);
+    }
+
+    private function completeCallback(mixed $apps): \Illuminate\Testing\TestResponse
+    {
+        Http::fake([
+            'identity.example.test/oauth/token' => Http::response(['access_token' => 'token']),
+            'identity.example.test/api/oauth/user' => Http::response($this->identityPayload($apps)),
+        ]);
+
+        $start = $this->get('/oauth/start-test');
+        parse_str((string) parse_url((string) $start->headers->get('Location'), PHP_URL_QUERY), $query);
+
+        return $this->get('/oauth/callback-test?'.http_build_query(['code' => 'code', 'state' => $query['state']]));
+    }
+
+    public function test_the_application_list_is_carried_through(): void
+    {
+        $this->completeCallback([['key' => 'finance', 'name' => 'Finance', 'url' => 'https://pf.example.test']])
+            ->assertOk()
+            ->assertJsonPath('apps.0.key', 'finance')
+            ->assertJsonPath('apps.0.url', 'https://pf.example.test');
+    }
+
+    public function test_a_provider_that_sends_no_list_yields_none(): void
+    {
+        $this->completeCallback(null)->assertOk()->assertJsonPath('apps', []);
+    }
+
+    /**
+     * The list is chrome. A malformed entry must not stop somebody signing in, which is what
+     * aborting here would do — this runs inside the callback.
+     */
+    public function test_malformed_entries_are_dropped_rather_than_failing_sign_in(): void
+    {
+        $this->completeCallback([
+            ['key' => 'ok', 'name' => 'Fine', 'url' => 'https://fine.example.test'],
+            ['key' => 'no-url', 'name' => 'Nope'],
+            ['key' => '', 'name' => 'Empty key', 'url' => 'https://x.example.test'],
+            ['key' => 'blank-name', 'name' => '   ', 'url' => 'https://x.example.test'],
+            ['key' => 'not-a-url', 'name' => 'Bad', 'url' => 'not a url'],
+            'not even an array',
+        ])
+            ->assertOk()
+            ->assertJsonCount(1, 'apps')
+            ->assertJsonPath('apps.0.key', 'ok');
+    }
+
+    /**
+     * `javascript:` and `data:` pass FILTER_VALIDATE_URL. These become href values, so the
+     * scheme is checked rather than assumed.
+     */
+    public function test_non_http_schemes_are_dropped(): void
+    {
+        $this->completeCallback([
+            ['key' => 'js', 'name' => 'Script', 'url' => 'javascript:alert(1)'],
+            ['key' => 'data', 'name' => 'Data', 'url' => 'data:text/html,<script>alert(1)</script>'],
+        ])->assertOk()->assertJsonPath('apps', []);
+    }
+
+    public function test_the_end_session_url_names_the_client_and_the_return_address(): void
+    {
+        $url = app(OAuthClient::class)->endSessionUrl('https://app.example.test/');
+
+        $this->assertStringStartsWith('https://identity.example.test/oauth/end-session?', $url);
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+        $this->assertSame('test-client', $query['client_id']);
+        $this->assertSame('https://app.example.test/', $query['post_logout_redirect_uri']);
+    }
+
 }
