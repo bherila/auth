@@ -23,6 +23,9 @@ return [
         'authorize_path' => '/oauth/authorize',
         'token_path' => '/oauth/token',
         'identity_path' => '/api/oauth/user',
+        // Relying-party initiated logout. Ending only the local session leaves the provider
+        // still recognising the person, so the next sign-in returns them without a prompt.
+        'end_session_path' => '/oauth/end-session',
     ],
 
     // Optional OAuth authorization-server helpers for applications exposing an

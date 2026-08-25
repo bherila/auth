@@ -108,7 +108,70 @@ final class OAuthClient
             subject: $identity['sub'],
             name: trim($identity['name']),
             email: Str::lower($identity['email']),
+            apps: $this->applications($identity['apps'] ?? null),
         );
+    }
+
+    /**
+     * The applications the provider says this person can move between.
+     *
+     * Malformed entries are dropped rather than rejected. This list is chrome: a provider
+     * that grows a field, or one entry with a broken URL, must not be able to stop somebody
+     * signing in — which is what aborting here would do, since this runs inside the callback.
+     *
+     * @return list<array{key: string, name: string, url: string}>
+     */
+    private function applications(mixed $apps): array
+    {
+        if (! is_array($apps)) {
+            return [];
+        }
+
+        $valid = [];
+
+        foreach ($apps as $app) {
+            if (! is_array($app)) {
+                continue;
+            }
+
+            $key = $app['key'] ?? null;
+            $name = $app['name'] ?? null;
+            $url = $app['url'] ?? null;
+
+            if (! is_string($key) || ! is_string($name) || ! is_string($url)) {
+                continue;
+            }
+
+            if ($key === '' || trim($name) === '' || filter_var($url, FILTER_VALIDATE_URL) === false) {
+                continue;
+            }
+
+            // Only ever a link the browser will follow. A `javascript:` or `data:` URL passes
+            // FILTER_VALIDATE_URL, so the scheme is checked rather than assumed.
+            if (! in_array(Str::lower((string) parse_url($url, PHP_URL_SCHEME)), ['http', 'https'], true)) {
+                continue;
+            }
+
+            $valid[] = ['key' => $key, 'name' => trim($name), 'url' => $url];
+        }
+
+        return $valid;
+    }
+
+    /**
+     * Where to send someone so that signing out here also signs them out of the provider.
+     *
+     * Without this an application can only end its own session; the provider still knows the
+     * person, and the next authorization request hands them straight back, which reads as a
+     * sign-out that did nothing. The provider validates `$returnTo` against this client's
+     * registered redirects, so a value it does not recognise lands on the provider instead.
+     */
+    public function endSessionUrl(string $returnTo): string
+    {
+        return $this->endpoint('end_session_path').'?'.http_build_query([
+            'client_id' => $this->configuredValue('client_id'),
+            'post_logout_redirect_uri' => $returnTo,
+        ]);
     }
 
     private function endpoint(string $pathKey): string
