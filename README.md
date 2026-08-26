@@ -278,6 +278,59 @@ public function callback(Request $request, OAuthClient $oauth): RedirectResponse
 The package deliberately does not match or bind users by email. That decision is
 application-specific and must not silently replace a trusted provider-subject binding.
 
+#### Signing out, and the application list
+
+Two things every relying party needs, and which four of them had drifted apart on before
+they were lifted here.
+
+`BWH\Auth\Concerns\SignsOutThroughProvider` ends the local session and then hands off to
+the provider's end-session endpoint. Ending only the local session is not signing out: the
+provider still recognises the person, so the next protected page sends them back for
+authorization and is handed an identity with no prompt — a button that visibly does nothing.
+
+```php
+class OAuthLoginController extends Controller
+{
+    use SignsOutThroughProvider;
+
+    public function logout(Request $request, OAuthClient $oauth): RedirectResponse
+    {
+        return $this->signOutThroughProvider($request, $oauth);
+    }
+
+    // Optional; a no-op unless the application keeps an audit trail.
+    protected function afterLocalSignOut(Request $request, ?Authenticatable $user): void
+    {
+        $this->auditLoggedOut($request, $user);
+    }
+}
+```
+
+Pass a second argument to choose where the provider returns the person; it defaults to this
+application's root and must be absolute, because the provider validates it against the
+origins registered for this client. An address it does not recognise lands them on the
+provider rather than being followed, so a misconfiguration degrades instead of becoming an
+open redirect.
+
+`BWH\Auth\OAuth\ProviderApplications` holds the sibling applications the provider reported,
+so an app switcher can render without a second round trip. Store it in the callback once the
+application has decided to admit the person, and read it where the page is composed:
+
+```php
+ProviderApplications::remember($request, $identity->apps);   // in callback()
+ProviderApplications::forRequest($request);                  // in Blade, Inertia, a view composer
+```
+
+Keeping it server-side is the point: the set of applications that exist is never compiled
+into a JavaScript bundle, so downloading the front end tells an anonymous visitor nothing
+about what else is deployed. Gate the injection on the person being signed in.
+
+`OAuthClient::isConfigured()` answers whether a client has been issued for this application
+without aborting, which the other methods cannot do — they 503 on a missing setting, the
+right answer for a half-configured deploy and the wrong one for an app that is meant to run
+without a provider at all. Use it to 404 the OAuth routes, or to fall back to a local
+sign-in, in environments that have no client.
+
 Bind `BWH\Auth\Contracts\AuthUserPolicy` when an app needs custom login gates or redirects.
 
 Bind `BWH\Auth\Contracts\AuthAuditLogger` only when an app wants to override the built-in audit behavior (for example, to mirror events into its own broader audit table). Most apps should instead use the database driver described below.
