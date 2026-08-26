@@ -14,6 +14,31 @@ final class OAuthClient
 
     private const string VERIFIER_SESSION_KEY = 'oauth.login.code_verifier';
 
+    /**
+     * Whether a client has been issued for this application at the provider.
+     *
+     * Every other method here aborts 503 on a missing setting, which is the right answer
+     * for a half-configured deploy but the wrong one for an application that is meant to
+     * run without a provider at all — local development, or a deploy that has not been
+     * registered yet. Asking first lets a relying party fall back to its own sign-in, or
+     * 404 the OAuth routes, instead of presenting an outage.
+     *
+     * `base_url` carries a default, so in practice this is a question about `client_id`;
+     * both are checked because a blanked-out base URL would fail later and less clearly.
+     */
+    public static function isConfigured(): bool
+    {
+        return self::configuredSetting('client_id') !== ''
+            && self::configuredSetting('base_url') !== '';
+    }
+
+    private static function configuredSetting(string $key): string
+    {
+        $value = config("bherila-auth.oauth_client.{$key}");
+
+        return is_string($value) ? trim($value) : '';
+    }
+
     public function redirect(Request $request): RedirectResponse
     {
         $state = Str::random(40);
