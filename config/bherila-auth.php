@@ -112,7 +112,12 @@ return [
     'two_factor' => [
         'table' => 'auth_two_factor_attempts',
         'expires_minutes' => 15,
-        'allow_test_code' => env('BHERILA_AUTH_ALLOW_TEST_2FA_CODE', env('APP_ENV') !== 'production'),
+        // Fixed-code bypass for automated tests and local development. Off by default,
+        // and even when on it applies only to accounts explicitly flagged `is_test`
+        // AND only in the environments listed below (an empty list means any).
+        // All three conditions must hold, so turning this off really does turn it off.
+        'allow_test_code' => env('BHERILA_AUTH_ALLOW_TEST_2FA_CODE', false),
+        'test_code_environments' => ['local', 'testing'],
         'test_code' => '999999',
         'mail_subject' => env('BHERILA_AUTH_TWO_FACTOR_MAIL_SUBJECT', 'Verify your login - :app'),
         'login_url' => env('BHERILA_AUTH_LOGIN_URL', '/login'),

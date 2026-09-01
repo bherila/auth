@@ -1,6 +1,6 @@
 # Threat Model: bherila/auth-laravel
 
-_Last reviewed: 2026-05-07. Re-review after route, controller, or `web-auth/webauthn-lib` changes._
+_Last reviewed: 2026-09-01 (v0.9.1). Re-review after route, controller, OAuth client/server, or `web-auth/webauthn-lib` changes._
 
 ## Scope
 
@@ -8,6 +8,8 @@ _Last reviewed: 2026-05-07. Re-review after route, controller, or `web-auth/weba
 
 Covered package capabilities:
 
+- OAuth 2.0 authorization-code + PKCE client mechanics, and the relying-party session it owns.
+- Opt-in Passport authorization-server helpers: metadata, dynamic client registration, PKCE and resource-indicator enforcement, consent presentation.
 - WebAuthn/passkey registration, deletion, and login APIs.
 - Password reset APIs and Laravel mailables.
 - Authenticated password change API.
@@ -67,7 +69,12 @@ Default package routes are registered under the app-configured prefix, usually `
 - `POST /api/change-password`
 - `POST /api/auth/two-factor/verify`
 - `POST /api/auth/two-factor/resend`
+- `GET|POST /api/auth/two-factor/confirm/{token}` (user-clickable "this was me" link from 2FA email)
 - `GET|POST /api/auth/two-factor/report/{token}` (user-clickable "this wasn't me" link from 2FA email)
+
+The OAuth client and authorization-server helpers are classes, not routes: the consuming
+app owns and names those endpoints, so they are entry points of the app, reached through
+package code.
 
 ## Key assumptions
 
@@ -90,12 +97,14 @@ Default package routes are registered under the app-configured prefix, usually `
 | Passkey deletion CSRF | Attacker attempts to remove victim passkeys. | Delete endpoint requires authenticated user and CSRF-protected middleware. | Keep CSRF enabled and consider step-up auth for deleting the last remaining credential in high-risk apps. |
 | Passkey enrollment from a stolen long-lived session | Attacker who has hijacked a session adds their own passkey to lock the victim out. | Package exposes the registration endpoint; it does not enforce recently-authenticated requirements. | High-risk apps must require re-auth (password or fresh passkey) within N minutes before the registration endpoint is reachable, e.g. via a `password.confirm` middleware. |
 | Passkey list info disclosure | `GET /api/passkeys` returns AAGUIDs, transports, labels, and last-used timestamps; could fingerprint a victim's devices if exposed cross-user. | Endpoint requires authenticated user and only returns rows scoped to that user. | Do not expose this endpoint to admin/impersonation paths without re-checking authorization; redact AAGUIDs in any logs that may leave the trust boundary. |
-| Password reset account enumeration | Attacker discovers whether an email has an account. | Reset request response is generic and the broker does not differentiate "user not found" from "sent". | Keep generic copy in UI and mail flows; rate-limit reset requests. |
+| Password reset account enumeration | Attacker discovers whether an email has an account. | Reset requests go through `PasswordBroker::sendResetLink()`, so an unknown address, a throttled request, and a sent link are indistinguishable in both response body and elapsed time (the broker's timebox). | Keep generic copy in UI and mail flows; rate-limit reset requests. |
 | Password reset token theft | Stolen email/token lets attacker set a password. | Uses Laravel password broker and hashed password update; reset token comparison is constant-time via the broker. | Require HTTPS, keep mail provider secure, set a short reset token expiry, notify user after reset. |
 | Multiple outstanding password reset tokens | Older reset emails remain valid in inboxes after the user requests a new one. | Laravel's password broker stores one row per user and overwrites on new requests, invalidating prior tokens. | Do not customize the broker to keep historical tokens; verify behavior after Laravel upgrades. |
 | Reset/2FA email flooding (mailbox abuse) | Attacker uses public reset/2FA endpoints to spam a victim's inbox or burn the app's mail-sender reputation. | None at the package level beyond endpoint shape. | Rate-limit per-IP and per-email at the route layer; cap resends per attempt window; alert on abnormal volume. |
 | Stale sessions survive password change/reset | A session that was hijacked before the password change continues to work afterward. | **Partial.** Password reset rotates `remember_token` and regenerates the resetting device's session. Password change (`AuthenticatedPasswordController::update`) does **not** rotate the remember token, invalidate other devices, or call `Auth::logoutOtherDevices` — see "Known gaps" below. | Until the package change-password controller is hardened, consuming apps should layer their own session-revocation step (e.g., a controller wrapper that calls `Auth::logoutOtherDevices` and `$user->setRememberToken(Str::random(60))->save()`) on the change-password route. |
-| 2FA code brute force | Attacker guesses emailed 2FA code. | Verification endpoint validates code/token using constant-time comparison and marks the attempt as used on success. | Rate-limit verify/resend, use short code lifetimes, log failures, lock the attempt row after N failures. |
+| 2FA code brute force | Attacker guesses emailed 2FA code. | Verification endpoint validates code/token using constant-time comparison and marks the attempt as used on success. Resend requires a still-valid attempt, so an expired challenge cannot extend itself. There is no per-attempt failure cap. | Rate-limit verify/resend, use short code lifetimes, log failures, lock the attempt row after N failures. |
+| Fixed 2FA test code reaching a real deployment | The configured test code authenticates any account on a non-production deploy. | Off by default, and honoured only when the setting is on AND the environment is in `two_factor.test_code_environments` (`local`, `testing` by default) AND the account is flagged `is_test`. | Leave `BHERILA_AUTH_ALLOW_TEST_2FA_CODE` unset outside development; never flag a real account `is_test`. |
+| Account state changes between first factor and session | An account disabled after its 2FA challenge (or during a password reset) still completes login. | `canLogin()` is rechecked immediately before `Auth::login()` on 2FA completion, and before the post-reset auto-login; the 2FA attempt is consumed either way. Change-password and passkey-management routes carry `RequireActiveUser`. | Implement `canLogin()` to reflect every account state that should block a login, and call it from the app's own password-login controller. |
 | 2FA report endpoint abuse | Attacker triggers the "this wasn't me" link to lock out a legitimate login attempt, or replays it. | Token is single-use (`is_used` flag) and only marks the attempt suspicious; it does not authenticate or change account state. | Rate-limit by token and by IP; ensure the audit logger captures who reported and from what address. |
 | Password reset on passwordless account | User with only passkeys needs recovery, or attacker abuses email recovery. | Passwordless users can still use email reset because Laravel users keep a random password hash. See "Design decisions" below. | Treat email account as a recovery factor and disclose this in UI; high-risk apps should disable email reset for passkey-only accounts and require admin recovery. |
 | Normal password reset revokes passkeys unexpectedly | User loses access after routine reset. | Package does not automatically delete passkeys during reset. | Revoke passkeys only during explicit compromise/account-recovery flows; show passkey review UI after reset. |
@@ -115,7 +124,9 @@ These are gaps in package behavior that the threat table flags above. They are l
 
 - **Password change does not revoke other sessions.** `AuthenticatedPasswordController::update` updates the hash but does not call `Auth::logoutOtherDevices` and does not rotate the user's remember token. A hijacked session survives the password change. Mitigation: consumers wrap or replace the route until the controller is hardened.
 - **Passkey registration has no recently-authenticated requirement.** Any authenticated session can add a credential. Apps should layer `password.confirm` (or equivalent) middleware on `/api/passkeys/register/options` and `/api/passkeys/register`.
-- **No package-level rate limiting on auth endpoints.** Reset, 2FA verify/resend, 2FA report, and passkey assertion endpoints rely entirely on consumer-applied rate limits. The package could ship sensible defaults via `RateLimiter` definitions.
+- **No package-level rate limiting on auth endpoints.** 2FA verify/resend, 2FA report, and passkey assertion endpoints rely entirely on consumer-applied rate limits. Reset requests carry the password broker's own recently-created-token throttle, which is not a substitute for a route limiter. The package could ship sensible defaults via `RateLimiter` definitions.
+- **No per-attempt failure or resend cap on 2FA.** An attempt row can absorb unlimited wrong codes until it expires, and each resend issues a fresh one.
+- **2FA attempts are consumed with a read-then-write.** Two concurrent submissions of the same valid code can both pass the `isValid()` check before either marks the row used. Making consumption a single conditional update would close it.
 
 ## Security checklist for consuming apps
 

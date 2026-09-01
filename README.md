@@ -17,6 +17,50 @@ Includes:
 - login audit logging: an owned `auth_audit_log` table, a default database logger, binary IP storage, optional read endpoints, and opt-in retention (see "Login audit logging")
 - policy and audit contracts for app-specific behavior
 
+## Upgrading to v0.9.1
+
+**Runtime floor.** This release requires **PHP 8.4+** and **Laravel 13**. Earlier
+releases advertised PHP 8.2 and Laravel 12 or 13, but the code used typed class
+constants (PHP 8.3+) and CI only ever installed one combination, so neither claim
+held. The supported set is now one line, and CI runs the floor, the newest runtime,
+and `--prefer-lowest`.
+
+**Run the migrations.** Package migrations are published, not loaded, so
+`composer update` alone does not apply them. Passkey registration writes `rp_id`,
+which means an app that has not applied `2026_08_24_120000_add_rp_id_to_passkey_credentials`
+fails when a user enrolls a passkey:
+
+```sh
+php artisan vendor:publish --tag=bherila-auth-migrations
+php artisan migrate
+```
+
+**Republishing the config is optional now.** Package defaults are merged into the
+published config key by key, so a `config/bherila-auth.php` that predates a release
+no longer erases the nested defaults added since. Republish (`--tag=bherila-auth-config`,
+`--force`) only if you want the new keys and comments in the file itself.
+
+**Behaviour changes to check before deploying:**
+
+- `two_factor.allow_test_code` now defaults to **false**, and even when true the fixed
+  code is accepted only in the environments listed in `two_factor.test_code_environments`
+  (`local`, `testing`) **and** only for accounts flagged `is_test`. Previously either the
+  setting or an `is_test` account was enough, and the setting defaulted to on everywhere
+  except `APP_ENV=production` — a staging deploy accepted `999999` for every account.
+  Set `BHERILA_AUTH_ALLOW_TEST_2FA_CODE=true` in the environments that need it.
+- `canLogin()` is now rechecked before the 2FA login completes and before the
+  post-reset auto-login. A password reset still succeeds for a disallowed account, but
+  it no longer hands out a session.
+- `/api/change-password` and the authenticated passkey routes now carry
+  `RequireActiveUser` in addition to `auth`, so they answer 403 for an account your
+  policy will not log in.
+- `POST /api/auth/forgot-password` goes through Laravel's password broker, so a second
+  request within the broker's `throttle` window (`config/auth.php`, 60 seconds by
+  default) sends no mail. The response is unchanged.
+- `POST /api/auth/two-factor/resend` refuses an expired attempt instead of issuing a
+  fresh code for it.
+- The package dispatches Laravel's `PasswordResetLinkSent` and `PasswordReset` events.
+
 ## Upgrading to v0.5.0 (breaking)
 
 This release adds a required method to the `AuthUserPolicy` contract:
@@ -95,7 +139,8 @@ Published config lives at `config/bherila-auth.php`. Important settings:
 - `BHERILA_AUTH_PASSWORD_RESET_MAIL_SUBJECT`: optional reset-link mailable subject override.
 - `BHERILA_AUTH_PASSWORD_NOTICE_MAIL_SUBJECT`: optional password reset/change notice subject override.
 - `two_factor.expires_minutes`: 2FA code expiry. Defaults to 15 minutes.
-- `two_factor.allow_test_code`: allows the configured test code outside production.
+- `two_factor.allow_test_code`: allows the configured test code. Defaults to `false`; when enabled it applies only in `two_factor.test_code_environments` and only to accounts flagged `is_test`.
+- `two_factor.test_code_environments`: environments in which the test code may be honoured. Defaults to `['local', 'testing']`; an empty list means any environment.
 - `BHERILA_AUTH_TWO_FACTOR_MAIL_SUBJECT`: optional email 2FA subject override.
 - `passkeys.user_verification`: WebAuthn user verification requirement. Defaults to `preferred`; set to `required` for passkeys used as a stronger security factor.
 - `passkeys.resident_key`: WebAuthn resident key requirement. Defaults to `preferred`.

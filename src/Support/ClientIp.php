@@ -25,6 +25,28 @@ class ClientIp
             return null;
         }
 
-        return $request->ip();
+        return self::normalize($request->ip());
+    }
+
+    /**
+     * The address, or null when it is not one this package can both store and query.
+     *
+     * Audit IPs are stored packed (varbinary(16), via {@see \BWH\Auth\Casts\BinaryIpAddressCast}),
+     * so a value inet_pton() rejects has no stored form at all. Returning the raw value
+     * would leave callers holding a non-null address that silently packs to null, and a
+     * lookup keyed on it would then match the rows whose IP is genuinely unknown rather
+     * than nothing. Null says what is true: there is no usable client IP here.
+     *
+     * The framework normally hands back a well-formed address, but not always — a
+     * misconfigured trusted proxy can forward junk in an X-Forwarded-For header, and a
+     * console or test request has no REMOTE_ADDR to speak of.
+     */
+    public static function normalize(?string $ipAddress): ?string
+    {
+        if ($ipAddress === null || $ipAddress === '') {
+            return null;
+        }
+
+        return @inet_pton($ipAddress) === false ? null : $ipAddress;
     }
 }

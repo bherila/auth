@@ -6,9 +6,14 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * The fallback matches config/bherila-auth.php. It only applies when the config is
+     * missing or stale — exactly the case a wrong fallback would silently break, which
+     * is what `webauthn_credentials` did here.
+     */
     private function table(): string
     {
-        return (string) config('bherila-auth.passkeys.table', 'webauthn_credentials');
+        return (string) config('bherila-auth.passkeys.table', 'auth_passkeys');
     }
 
     /**
@@ -21,14 +26,26 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table($this->table(), function (Blueprint $table): void {
+        $table = $this->table();
+
+        if (! Schema::hasTable($table) || Schema::hasColumn($table, 'rp_id')) {
+            return;
+        }
+
+        Schema::table($table, function (Blueprint $table): void {
             $table->string('rp_id', 255)->nullable()->after('aaguid');
         });
     }
 
     public function down(): void
     {
-        Schema::table($this->table(), function (Blueprint $table): void {
+        $table = $this->table();
+
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'rp_id')) {
+            return;
+        }
+
+        Schema::table($table, function (Blueprint $table): void {
             $table->dropColumn('rp_id');
         });
     }

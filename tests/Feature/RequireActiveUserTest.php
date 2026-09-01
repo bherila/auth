@@ -113,4 +113,39 @@ class RequireActiveUserTest extends TestCase
 
         $this->assertSame('ok', $response->getContent());
     }
+
+    // --- Package-owned credential routes ---
+
+    private function denyLogins(): void
+    {
+        $this->app->bind(AuthUserPolicy::class, fn () => new class extends DefaultAuthUserPolicy
+        {
+            public function canLogin(Authenticatable $user, Request $request): bool
+            {
+                return false;
+            }
+        });
+    }
+
+    public function test_change_password_route_rejects_an_account_that_may_not_log_in(): void
+    {
+        $user = User::create(['name' => 'Test', 'email' => 'g@example.com', 'password' => bcrypt('old-password')]);
+
+        $this->denyLogins();
+
+        $this->actingAs($user)->postJson('/api/change-password', [
+            'current_password' => 'old-password',
+            'password' => 'new-password-1234',
+            'password_confirmation' => 'new-password-1234',
+        ])->assertForbidden();
+    }
+
+    public function test_passkey_management_routes_reject_an_account_that_may_not_log_in(): void
+    {
+        $user = User::create(['name' => 'Test', 'email' => 'h@example.com', 'password' => bcrypt('x')]);
+
+        $this->denyLogins();
+
+        $this->actingAs($user)->getJson('/api/passkeys')->assertForbidden();
+    }
 }
