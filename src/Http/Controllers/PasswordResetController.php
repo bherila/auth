@@ -38,7 +38,7 @@ class PasswordResetController extends Controller
         // directly. The broker wraps the whole operation in a timebox and refuses to issue
         // a token when one was created too recently, so this endpoint keeps the framework's
         // reset throttling and constant-time behaviour instead of bypassing both.
-        Password::broker()->sendResetLink($validated, function ($user, string $token) use ($request): void {
+        Password::broker()->sendResetLink($this->brokerCredentials($validated), function ($user, string $token) use ($request): void {
             $emailAttribute = config('bherila-auth.users.email_attribute', 'email');
             $email = data_get($user, $emailAttribute);
             $resetUrl = $this->resetUrl($token, (string) $email);
@@ -71,7 +71,7 @@ class PasswordResetController extends Controller
         ]);
 
         $resetUser = null;
-        $status = Password::broker()->reset($validated, function ($user, string $password) use (&$resetUser): void {
+        $status = Password::broker()->reset($this->brokerCredentials($validated), function ($user, string $password) use (&$resetUser): void {
             $attributes = [
                 'password' => Hash::make($password),
                 'remember_token' => Str::random(60),
@@ -127,6 +127,35 @@ class PasswordResetController extends Controller
             'message' => __($status),
             'redirect' => $redirect,
         ]);
+    }
+
+    /**
+     * Re-key the request's `email` field to the column the application actually stores
+     * addresses in.
+     *
+     * The broker hands its credentials straight to the user provider's
+     * retrieveByCredentials(), which reads them as column names. It knows nothing about
+     * `users.email_attribute`, so an application that configured `email_address` or
+     * `login_email` would be looked up by a column it does not use and every reset would
+     * fail to find its user. The HTTP field stays `email` either way; only the column
+     * the broker is asked about changes.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function brokerCredentials(array $validated): array
+    {
+        $attribute = config('bherila-auth.users.email_attribute', 'email');
+
+        if (! is_string($attribute) || $attribute === '' || $attribute === 'email') {
+            return $validated;
+        }
+
+        $credentials = $validated;
+        $credentials[$attribute] = $credentials['email'];
+        unset($credentials['email']);
+
+        return $credentials;
     }
 
     private function resetUrl(string $token, string $email): string
