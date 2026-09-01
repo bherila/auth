@@ -17,13 +17,22 @@ Includes:
 - login audit logging: an owned `auth_audit_log` table, a default database logger, binary IP storage, optional read endpoints, and opt-in retention (see "Login audit logging")
 - policy and audit contracts for app-specific behavior
 
-## Upgrading to v0.9.1
+## Upgrading to v0.10.0 (breaking)
 
-**Runtime floor.** This release requires **PHP 8.4+** and **Laravel 13**. Earlier
-releases advertised PHP 8.2 and Laravel 12 or 13, but the code used typed class
-constants (PHP 8.3+) and CI only ever installed one combination, so neither claim
-held. The supported set is now one line, and CI runs the floor, the newest runtime,
-and `--prefer-lowest`.
+**Runtime floor.** This release requires **PHP 8.4+** and **Laravel 13**, dropping
+PHP 8.3 and Laravel 12. Earlier releases advertised PHP 8.2 and Laravel 12 or 13, but
+the code used typed class constants (PHP 8.3+) and CI only ever installed one
+combination, so neither claim held. The supported set is now one line, and CI runs the
+floor, the newest runtime, and `--prefer-lowest`.
+
+Dropping a platform is a breaking change, so this ships as **v0.10.0**, not a 0.9.x
+patch: for a pre-1.0 package `^0.9` means `>=0.9.0 <0.10.0`, which is exactly the
+boundary that keeps a consumer still on PHP 8.3 from being upgraded into a package it
+cannot run. Update the requirement deliberately, alongside the runtime:
+
+```sh
+composer require bherila/auth-laravel:^0.10
+```
 
 **Run the migrations.** Package migrations are published, not loaded, so
 `composer update` alone does not apply them. Passkey registration writes `rp_id`,
@@ -47,7 +56,11 @@ no longer erases the nested defaults added since. Republish (`--tag=bherila-auth
   (`local`, `testing`) **and** only for accounts flagged `is_test`. Previously either the
   setting or an `is_test` account was enough, and the setting defaulted to on everywhere
   except `APP_ENV=production` — a staging deploy accepted `999999` for every account.
-  Set `BHERILA_AUTH_ALLOW_TEST_2FA_CODE=true` in the environments that need it.
+  All three conditions are required, so the environment variable alone is no longer
+  enough outside `local` and `testing`: a staging deploy that genuinely needs the fixed
+  code must set `BHERILA_AUTH_ALLOW_TEST_2FA_CODE=true`, add its environment to
+  `two_factor.test_code_environments` in the published config, and flag the specific
+  accounts `is_test`.
 - `canLogin()` is now rechecked before the 2FA login completes and before the
   post-reset auto-login. A password reset still succeeds for a disallowed account, but
   it no longer hands out a session.

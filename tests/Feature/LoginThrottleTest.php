@@ -348,16 +348,36 @@ class LoginThrottleTest extends TestCase
         Carbon::setTestNow('2026-06-04 12:00:00');
         $this->enableThrottle(maxAttempts: 2, decayMinutes: 10);
 
-        // Two failures for this account from a real address, then a request whose IP
-        // will not parse: the email matches but the IP dimension does not, so the pair
-        // this strategy keys on is not the locked one.
-        app(AuthAuditLogger::class)->loginFailed($this->request('198.51.100.10'), null, 'user@example.com', 'Invalid credentials');
-        app(AuthAuditLogger::class)->loginFailed($this->request('198.51.100.10'), null, 'user@example.com', 'Invalid credentials');
+        // Failures from requests whose IP would not parse are stored with a NULL
+        // ip_address. `email_ip` names both dimensions, so a later request that also has
+        // no usable IP must not key on (email, NULL) and inherit them: that is the
+        // `email` strategy, not the one configured, and it lets anyone lock an account
+        // out from behind an address the app cannot resolve.
+        app(AuthAuditLogger::class)->loginFailed($this->request('not-an-ip-address'), null, 'user@example.com', 'Invalid credentials');
+        app(AuthAuditLogger::class)->loginFailed($this->request('also-not-an-ip'), null, 'user@example.com', 'Invalid credentials');
 
-        $state = app(LoginThrottle::class)->inspect($this->request('not-an-ip-address'), null, 'user@example.com');
+        $this->assertSame(2, AuthAuditLog::query()->whereNull('ip_address')->count());
 
-        $this->assertSame(0, $state->attempts);
+        $state = app(LoginThrottle::class)->inspect($this->request('still-not-an-ip'), null, 'user@example.com');
+
+        $this->assertFalse($state->enabled);
         $this->assertFalse($state->locked);
+        $this->assertSame(0, $state->attempts);
+        $this->assertTrue($state->allowsLogin());
+    }
+
+    public function test_email_ip_strategy_without_an_email_is_allowed(): void
+    {
+        Carbon::setTestNow('2026-06-04 12:00:00');
+        $this->enableThrottle(maxAttempts: 1, decayMinutes: 10);
+
+        // The other half of the same rule: a usable IP is not a usable `email_ip` key.
+        app(AuthAuditLogger::class)->loginFailed($this->request('198.51.100.10'), null, null, 'Invalid credentials');
+
+        $state = app(LoginThrottle::class)->inspect($this->request('198.51.100.10'), null, null);
+
+        $this->assertFalse($state->enabled);
+        $this->assertTrue($state->allowsLogin());
     }
 
     public function test_throttles_login_attempts_trait_delegates_to_the_service(): void

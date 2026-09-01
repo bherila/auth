@@ -4,7 +4,12 @@ Notable changes per release. Versions follow the tags published to
 [Packagist](https://packagist.org/packages/bherila/auth-laravel); anything older than
 the first entry here is in the git history.
 
-## Unreleased (v0.9.1)
+## Unreleased (v0.10.0)
+
+Breaking: this release drops PHP 8.3 and Laravel 12. For a pre-1.0 package `^0.9`
+resolves as `>=0.9.0 <0.10.0`, so shipping a platform drop as 0.9.x would upgrade
+consumers into a package their runtime cannot load. Consumers move to `^0.10`
+together with PHP 8.4+ and Laravel 13.
 
 ### Requirements
 
