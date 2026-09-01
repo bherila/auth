@@ -140,7 +140,7 @@ class AuthAuditLogLoginThrottle implements LoginThrottle
             ->when($method !== null, fn (Builder $query) => $query->where('auth_method', $method))
             ->when($useEmail && $email !== null, fn (Builder $query) => $query->whereRaw('LOWER(email) = ?', [$email]))
             ->when($useEmail && $email === null, fn (Builder $query) => $query->whereNull('email'))
-            ->when($useIp && $ipAddress !== null, fn (Builder $query) => $query->where('ip_address', $this->packedIp($ipAddress)))
+            ->when($useIp && $ipAddress !== null, fn (Builder $query) => $this->whereIpAddress($query, $ipAddress))
             ->when($useIp && $ipAddress === null, fn (Builder $query) => $query->whereNull('ip_address'));
     }
 
@@ -165,6 +165,27 @@ class AuthAuditLogLoginThrottle implements LoginThrottle
         $email = data_get($user, config('bherila-auth.users.email_attribute', 'email'));
 
         return is_string($email) ? $email : null;
+    }
+
+    /**
+     * Constrain the query to one client IP.
+     *
+     * ClientIp::resolve() already refuses an address that will not pack, so this is a
+     * belt-and-braces guard for a value reaching the throttle by another route: matching
+     * on a null packed value would be read as `ip_address IS NULL` and quietly count the
+     * failures of every request whose IP was unknown. An address with no stored form
+     * matches nothing instead.
+     *
+     * @param  Builder<AuthAuditLog>  $query
+     * @return Builder<AuthAuditLog>
+     */
+    protected function whereIpAddress(Builder $query, string $ipAddress): Builder
+    {
+        $packed = $this->packedIp($ipAddress);
+
+        return $packed === null
+            ? $query->whereRaw('1 = 0')
+            : $query->where('ip_address', $packed);
     }
 
     protected function packedIp(string $ipAddress): ?string

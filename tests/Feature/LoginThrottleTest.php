@@ -322,6 +322,44 @@ class LoginThrottleTest extends TestCase
         $this->assertTrue($state->allowsLogin());
     }
 
+    public function test_malformed_client_ip_is_treated_as_no_ip(): void
+    {
+        Carbon::setTestNow('2026-06-04 12:00:00');
+        $this->enableThrottle(maxAttempts: 1, decayMinutes: 10);
+        config(['bherila-auth.throttle.key' => 'ip']);
+
+        // Rows written from a request whose IP could not be parsed are stored with a
+        // NULL ip_address. A later request whose IP is also unparseable must not adopt
+        // that NULL as its key and inherit every other unknown-IP failure.
+        app(AuthAuditLogger::class)->loginFailed($this->request('not-an-ip-address'), null, 'user@example.com', 'Invalid credentials');
+
+        $this->assertNull(AuthAuditLog::query()->value('ip_address'));
+
+        $state = app(LoginThrottle::class)->inspect($this->request('still-not-an-ip'), null, 'someone-else@example.com');
+
+        $this->assertFalse($state->enabled);
+        $this->assertFalse($state->locked);
+        $this->assertTrue($state->allowsLogin());
+        $this->assertNull($state->ipAddress);
+    }
+
+    public function test_malformed_client_ip_does_not_widen_an_email_ip_key(): void
+    {
+        Carbon::setTestNow('2026-06-04 12:00:00');
+        $this->enableThrottle(maxAttempts: 2, decayMinutes: 10);
+
+        // Two failures for this account from a real address, then a request whose IP
+        // will not parse: the email matches but the IP dimension does not, so the pair
+        // this strategy keys on is not the locked one.
+        app(AuthAuditLogger::class)->loginFailed($this->request('198.51.100.10'), null, 'user@example.com', 'Invalid credentials');
+        app(AuthAuditLogger::class)->loginFailed($this->request('198.51.100.10'), null, 'user@example.com', 'Invalid credentials');
+
+        $state = app(LoginThrottle::class)->inspect($this->request('not-an-ip-address'), null, 'user@example.com');
+
+        $this->assertSame(0, $state->attempts);
+        $this->assertFalse($state->locked);
+    }
+
     public function test_throttles_login_attempts_trait_delegates_to_the_service(): void
     {
         Carbon::setTestNow('2026-06-04 12:00:00');
