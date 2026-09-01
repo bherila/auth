@@ -16,16 +16,30 @@ permissions:
 
 jobs:
   test:
-    name: Laravel package (bherila/auth-laravel)
+    name: PHP ${{ matrix.php }} ${{ matrix.dependencies }} (bherila/auth-laravel)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The floor the package advertises: composer.json requires PHP ^8.4 and
+          # Illuminate ^13.0, so the lowest supported runtime is tested on every run.
+          # A syntax-level feature newer than the floor (typed class constants, for
+          # example) fails here rather than in a consumer's install.
+          - php: '8.4'
+            dependencies: '--prefer-lowest'
+          - php: '8.4'
+            dependencies: ''
+          - php: '8.5'
+            dependencies: ''
     steps:
       - uses: actions/checkout@v6
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.5'
+          php-version: ${{ matrix.php }}
           extensions: mbstring, xml, ctype, iconv, sqlite3, bcmath, intl
           coverage: none
 
@@ -33,14 +47,17 @@ jobs:
         uses: actions/cache@v5
         with:
           path: vendor
-          key: composer-${{ hashFiles('composer.json') }}
-          restore-keys: composer-
+          key: composer-${{ matrix.php }}-${{ matrix.dependencies }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-${{ matrix.dependencies }}-
 
       - name: Install Composer dependencies
-        run: composer install --no-interaction --prefer-dist
+        run: composer update --no-interaction --prefer-dist --prefer-stable ${{ matrix.dependencies }}
 
       - name: Validate Composer metadata
         run: composer validate --strict --no-check-lock
+
+      - name: Audit dependencies for known advisories
+        run: composer audit --no-interaction
 
       - name: Run PHPUnit
         run: composer test
