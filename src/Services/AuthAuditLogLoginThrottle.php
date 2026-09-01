@@ -25,9 +25,13 @@ class AuthAuditLogLoginThrottle implements LoginThrottle
         $useEmail = $key !== 'ip';
         $useIp = $key !== 'email';
 
-        // The key is unusable when the dimensions this strategy relies on are all
-        // absent (e.g. 'email' strategy with no email, or an IP that won't resolve).
-        $hasUsableKey = ($useEmail && $normalizedEmail !== null) || ($useIp && $ipAddress !== null);
+        // Every dimension the strategy names has to be present. Accepting a partial key
+        // silently changes which strategy is in force: 'email_ip' with an IP that will
+        // not resolve would fall back to counting an account's failures across every
+        // request whose IP was unknown, which is both a wider key than was configured
+        // and a way to lock an account out from behind an unresolvable address.
+        $hasUsableKey = (! $useEmail || $normalizedEmail !== null)
+            && (! $useIp || $ipAddress !== null);
 
         if (! $this->enabled() || $maxAttempts < 1 || $decayMinutes < 1 || ! $hasUsableKey) {
             return LoginThrottleState::allowed(false, 0, $maxAttempts, null, $normalizedEmail, $ipAddress, $method);
@@ -128,9 +132,13 @@ class AuthAuditLogLoginThrottle implements LoginThrottle
     }
 
     /**
-     * Build the base query for the active key strategy. A dimension that is not
-     * part of the strategy is omitted entirely; a dimension that IS part of the
-     * strategy but has a null value matches rows whose column is null.
+     * Build the base query for the active key strategy. A dimension that is not part of
+     * the strategy is omitted entirely.
+     *
+     * inspect() only reaches this once every dimension the strategy names has a value,
+     * so the null clauses below are a floor for a caller arriving another way: matching
+     * the rows whose column is null is narrower than dropping the constraint, which
+     * would silently widen the key.
      *
      * @return Builder<AuthAuditLog>
      */
