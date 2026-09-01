@@ -1,6 +1,6 @@
 # Threat Model: bherila/auth-laravel
 
-_Last reviewed: 2026-09-01 (v0.9.1). Re-review after route, controller, OAuth client/server, or `web-auth/webauthn-lib` changes._
+_Last reviewed: 2026-09-01 (v0.10.0). Re-review after route, controller, OAuth client/server, or `web-auth/webauthn-lib` changes._
 
 ## Scope
 
@@ -97,7 +97,7 @@ package code.
 | Passkey deletion CSRF | Attacker attempts to remove victim passkeys. | Delete endpoint requires authenticated user and CSRF-protected middleware. | Keep CSRF enabled and consider step-up auth for deleting the last remaining credential in high-risk apps. |
 | Passkey enrollment from a stolen long-lived session | Attacker who has hijacked a session adds their own passkey to lock the victim out. | Package exposes the registration endpoint; it does not enforce recently-authenticated requirements. | High-risk apps must require re-auth (password or fresh passkey) within N minutes before the registration endpoint is reachable, e.g. via a `password.confirm` middleware. |
 | Passkey list info disclosure | `GET /api/passkeys` returns AAGUIDs, transports, labels, and last-used timestamps; could fingerprint a victim's devices if exposed cross-user. | Endpoint requires authenticated user and only returns rows scoped to that user. | Do not expose this endpoint to admin/impersonation paths without re-checking authorization; redact AAGUIDs in any logs that may leave the trust boundary. |
-| Password reset account enumeration | Attacker discovers whether an email has an account. | Reset requests go through `PasswordBroker::sendResetLink()`, so an unknown address, a throttled request, and a sent link are indistinguishable in both response body and elapsed time (the broker's timebox). | Keep generic copy in UI and mail flows; rate-limit reset requests. |
+| Password reset account enumeration | Attacker discovers whether an email has an account. | Reset requests go through `PasswordBroker::sendResetLink()`, so an unknown address, a throttled request, and a sent link share one response body, and the broker's timebox imposes a minimum execution time that flattens simple lookup timing differences. Mail is sent synchronously inside the callback, so transport latency beyond that minimum can still make a request for an existing account observably slower. | Keep generic copy in UI and mail flows; rate-limit reset requests. |
 | Password reset token theft | Stolen email/token lets attacker set a password. | Uses Laravel password broker and hashed password update; reset token comparison is constant-time via the broker. | Require HTTPS, keep mail provider secure, set a short reset token expiry, notify user after reset. |
 | Multiple outstanding password reset tokens | Older reset emails remain valid in inboxes after the user requests a new one. | Laravel's password broker stores one row per user and overwrites on new requests, invalidating prior tokens. | Do not customize the broker to keep historical tokens; verify behavior after Laravel upgrades. |
 | Reset/2FA email flooding (mailbox abuse) | Attacker uses public reset/2FA endpoints to spam a victim's inbox or burn the app's mail-sender reputation. | None at the package level beyond endpoint shape. | Rate-limit per-IP and per-email at the route layer; cap resends per attempt window; alert on abnormal volume. |
