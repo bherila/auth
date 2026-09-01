@@ -10,6 +10,7 @@ use BWH\Auth\Services\AuthAuditLogLoginThrottle;
 use BWH\Auth\Services\DatabaseAuthAuditLogger;
 use BWH\Auth\Services\DefaultAuthUserPolicy;
 use BWH\Auth\Services\NullAuthAuditLogger;
+use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -17,7 +18,7 @@ class AuthServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/bherila-auth.php', 'bherila-auth');
+        $this->mergeConfigRecursivelyFrom(__DIR__.'/../config/bherila-auth.php', 'bherila-auth');
 
         $this->app->bind(AuthUserPolicy::class, DefaultAuthUserPolicy::class);
         $this->app->bind(AuthAuditLogger::class, function ($app) {
@@ -65,6 +66,51 @@ class AuthServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([PruneAuthAuditLogCommand::class]);
         }
+    }
+
+    /**
+     * Merge the package defaults under the application's configuration, one nested key
+     * at a time.
+     *
+     * mergeConfigFrom() is a top-level array_merge: an application that published this
+     * file before a release added a key inside `passkeys`, `two_factor`, `oauth_client`
+     * or `oauth_server` replaces that whole nested array, and the new key silently
+     * disappears — reading as null rather than as its default. Every setting this
+     * package added since a consumer last republished its config has that failure mode.
+     *
+     * Laravel's replaceConfigRecursivelyFrom() fixes the nesting but merges lists by
+     * index, so an application that shortens a list (emptying `required_columns`, or
+     * narrowing `test_code_environments`) keeps the tail of the package's default.
+     * Recursing into associative arrays only, and letting a configured list replace the
+     * default outright, is what a published config file actually means.
+     */
+    private function mergeConfigRecursivelyFrom(string $path, string $key): void
+    {
+        if ($this->app instanceof CachesConfiguration && $this->app->configurationIsCached()) {
+            return;
+        }
+
+        $config = $this->app->make('config');
+
+        $config->set($key, $this->mergeConfigArrays(require $path, (array) $config->get($key, [])));
+    }
+
+    /**
+     * @param  array<mixed>  $defaults
+     * @param  array<mixed>  $configured
+     * @return array<mixed>
+     */
+    private function mergeConfigArrays(array $defaults, array $configured): array
+    {
+        foreach ($configured as $key => $value) {
+            $default = $defaults[$key] ?? null;
+
+            $defaults[$key] = is_array($value) && is_array($default) && ! array_is_list($value)
+                ? $this->mergeConfigArrays($default, $value)
+                : $value;
+        }
+
+        return $defaults;
     }
 
     private function shouldLoadAuthRoutes(): bool
