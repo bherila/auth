@@ -35,6 +35,23 @@ class TwoFactorLoginTest extends TestCase
         ], $attributes));
     }
 
+    /**
+     * A challenge whose real code is deliberately not the fixed test code.
+     *
+     * TwoFactorAttempt::createForUser() draws a random six-digit code, which is 999999
+     * one time in a million — enough to make a "the bypass is refused" test pass by
+     * authenticating for real.
+     */
+    private function attemptWithCodeOtherThanTheTestCode(User $user): TwoFactorAttempt
+    {
+        $attempt = TwoFactorAttempt::createForUser($user);
+        $attempt->forceFill(['code' => '123456'])->save();
+
+        $this->assertNotSame(config('bherila-auth.two_factor.test_code'), $attempt->code);
+
+        return $attempt;
+    }
+
     private function denyLogins(): void
     {
         $this->app->bind(AuthUserPolicy::class, fn () => new class extends DefaultAuthUserPolicy
@@ -127,7 +144,7 @@ class TwoFactorLoginTest extends TestCase
         config(['bherila-auth.two_factor.allow_test_code' => false]);
 
         $user = $this->user(['is_test' => true]);
-        $attempt = TwoFactorAttempt::createForUser($user);
+        $attempt = $this->attemptWithCodeOtherThanTheTestCode($user);
 
         $this->postJson('/api/auth/two-factor/verify', [
             'attempt_token' => $attempt->token,
@@ -142,7 +159,7 @@ class TwoFactorLoginTest extends TestCase
         config(['bherila-auth.two_factor.allow_test_code' => true]);
 
         $user = $this->user(['is_test' => false]);
-        $attempt = TwoFactorAttempt::createForUser($user);
+        $attempt = $this->attemptWithCodeOtherThanTheTestCode($user);
 
         $this->postJson('/api/auth/two-factor/verify', [
             'attempt_token' => $attempt->token,
@@ -162,7 +179,7 @@ class TwoFactorLoginTest extends TestCase
         ]);
 
         $user = $this->user(['is_test' => true]);
-        $attempt = TwoFactorAttempt::createForUser($user);
+        $attempt = $this->attemptWithCodeOtherThanTheTestCode($user);
 
         $this->postJson('/api/auth/two-factor/verify', [
             'attempt_token' => $attempt->token,
@@ -177,7 +194,7 @@ class TwoFactorLoginTest extends TestCase
         config(['bherila-auth.two_factor.allow_test_code' => true]);
 
         $user = $this->user(['is_test' => true]);
-        $attempt = TwoFactorAttempt::createForUser($user);
+        $attempt = $this->attemptWithCodeOtherThanTheTestCode($user);
 
         $this->postJson('/api/auth/two-factor/verify', [
             'attempt_token' => $attempt->token,
