@@ -3,6 +3,7 @@
 use BWH\Auth\Http\Controllers\AuthenticatedPasswordController;
 use BWH\Auth\Http\Controllers\PasswordResetController;
 use BWH\Auth\Http\Controllers\TwoFactorController;
+use BWH\Auth\Http\Middleware\RequireActiveUser;
 use Illuminate\Support\Facades\Route;
 
 if (config('bherila-auth.routes.password_resets', true)) {
@@ -11,7 +12,9 @@ if (config('bherila-auth.routes.password_resets', true)) {
 }
 
 if (config('bherila-auth.routes.change_password', true)) {
-    Route::middleware('auth')->post('/change-password', [AuthenticatedPasswordController::class, 'update']);
+    // RequireActiveUser as well as `auth`: changing the credential that grants access is
+    // a login-adjacent action, so it answers to the same canLogin() gate every login does.
+    Route::middleware(['auth', RequireActiveUser::class])->post('/change-password', [AuthenticatedPasswordController::class, 'update']);
 }
 
 if (config('bherila-auth.routes.two_factor', true)) {

@@ -54,7 +54,10 @@ class TwoFactorController extends Controller
         $attempt = TwoFactorAttempt::where('token', $validated['attempt_token'])->first();
         $user = $attempt?->user;
 
-        if (! $attempt || ! $user instanceof Authenticatable || $attempt->is_suspicious || $attempt->is_used) {
+        // isValid() rather than the is_used/is_suspicious pair on its own: an expired
+        // attempt is no longer a live challenge, so it must not be able to mint a new
+        // code (and a new expiry) for itself.
+        if (! $attempt || ! $user instanceof Authenticatable || ! $attempt->isValid()) {
             return response()->json(['success' => false, 'message' => 'Invalid or expired verification attempt.'], 422);
         }
 
@@ -151,7 +154,22 @@ class TwoFactorController extends Controller
             return $this->failure($request, $attempt, 'Authentication error. Please log in again.');
         }
 
+        // Consume the attempt before deciding anything else: a challenge that reached
+        // this point is spent whether or not the login is allowed to complete, so a
+        // denied account cannot retry the same code once its state changes back.
         $attempt->update(['is_used' => true]);
+
+        if (! $this->userPolicy->canLogin($user, $request)) {
+            // The challenge may have been created before the account was disabled.
+            // canLogin() is the gate for *any* login, so it is rechecked here rather
+            // than trusted from whenever the first factor passed.
+            $request->session()->forget([
+                config('bherila-auth.two_factor.session_user_key', 'bherila_auth_2fa_user_id'),
+                config('bherila-auth.two_factor.session_remember_key', 'bherila_auth_2fa_remember'),
+            ]);
+
+            return $this->failure($request, $attempt, 'Your account is not active.');
+        }
 
         Auth::login($user, (bool) $request->session()->pull(config('bherila-auth.two_factor.session_remember_key', 'bherila_auth_2fa_remember'), false));
         $request->session()->forget(config('bherila-auth.two_factor.session_user_key', 'bherila_auth_2fa_user_id'));
@@ -185,10 +203,26 @@ class TwoFactorController extends Controller
         return redirect(config('bherila-auth.two_factor.login_url', '/login'))->withErrors(['code' => $message]);
     }
 
+    /**
+     * Whether the fixed test code may stand in for this attempt's real code.
+     *
+     * Every condition must hold: the setting is on, the environment is one the
+     * setting is allowed in, and the account is explicitly marked as a test user.
+     * Previously either the setting or an `is_test` account was enough on its own,
+     * which meant the setting could not actually turn the bypass off, and its
+     * default (any environment that is not literally `production`) left a public
+     * staging deploy accepting one fixed code for every account.
+     */
     private function allowTestCode(TwoFactorAttempt $attempt): bool
     {
-        if ((bool) config('bherila-auth.two_factor.allow_test_code', false)) {
-            return true;
+        if (! (bool) config('bherila-auth.two_factor.allow_test_code', false)) {
+            return false;
+        }
+
+        $environments = array_values(array_filter((array) config('bherila-auth.two_factor.test_code_environments', ['local', 'testing'])));
+
+        if ($environments !== [] && ! app()->environment($environments)) {
+            return false;
         }
 
         return (bool) data_get($attempt->user, 'is_test', false);
