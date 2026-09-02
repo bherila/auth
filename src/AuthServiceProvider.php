@@ -13,6 +13,17 @@ use BWH\Auth\Services\NullAuthAuditLogger;
 use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Passport\Passport;
+use Laravel\Passport\Client as PassportClient;
+use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
+use Laravel\Passport\Bridge\AuthCodeRepository as PassportAuthCodeRepository;
+use Laravel\Passport\Bridge\RefreshTokenRepository as PassportRefreshTokenRepository;
+use BWH\Auth\OAuth\Server\ResourceAccessToken;
+use BWH\Auth\OAuth\Server\ResourceAccessTokenRepository;
+use BWH\Auth\OAuth\Server\ResourceAuthCodeRepository;
+use BWH\Auth\OAuth\Server\ResourceRefreshTokenRepository;
+use BWH\Auth\OAuth\Server\ResourceClient;
+use BWH\Auth\Http\Middleware\AppendOAuthAuthorizationResponseIssuer;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -27,6 +38,8 @@ class AuthServiceProvider extends ServiceProvider
                 : $app->make(NullAuthAuditLogger::class);
         });
         $this->app->bind(LoginThrottle::class, AuthAuditLogLoginThrottle::class);
+
+        $this->registerOAuthServerBindings();
     }
 
     public function boot(): void
@@ -66,6 +79,49 @@ class AuthServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([PruneAuthAuditLogCommand::class]);
         }
+
+        // Testbench and applications with deferred configuration can apply the
+        // opt-in setting after provider registration but before provider boot.
+        $this->registerOAuthServerBindings();
+        if ($this->oauthServerEnabled() && class_exists(Passport::class)) {
+            Passport::useAccessTokenEntity(ResourceAccessToken::class);
+            if (Passport::clientModel() === PassportClient::class) {
+                Passport::useClientModel(ResourceClient::class);
+            }
+        }
+
+        if (config('bherila-auth.oauth_server.authorization_response_issuer.enabled', false)) {
+            $this->app->booted(function (): void {
+                foreach ([
+                    'passport.authorizations.authorize',
+                    'passport.authorizations.approve',
+                    'passport.authorizations.deny',
+                ] as $routeName) {
+                    Route::getRoutes()->getByName($routeName)?->middleware(
+                        AppendOAuthAuthorizationResponseIssuer::class,
+                    );
+                }
+            });
+        }
+    }
+
+    private function registerOAuthServerBindings(): void
+    {
+        if (! $this->oauthServerEnabled() || ! class_exists(PassportAccessTokenRepository::class)) {
+            return;
+        }
+
+        // Passport resolves these concrete bridge classes while constructing its
+        // authorization/resource servers. Applications may still replace any of
+        // the bindings in their own provider when they need additional bookkeeping.
+        $this->app->bind(PassportAccessTokenRepository::class, ResourceAccessTokenRepository::class);
+        $this->app->bind(PassportAuthCodeRepository::class, ResourceAuthCodeRepository::class);
+        $this->app->bind(PassportRefreshTokenRepository::class, ResourceRefreshTokenRepository::class);
+    }
+
+    private function oauthServerEnabled(): bool
+    {
+        return (bool) config('bherila-auth.oauth_server.enabled', false);
     }
 
     /**

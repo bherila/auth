@@ -33,20 +33,43 @@ return [
     // by the application so this package never enables an authorization server
     // merely by being installed.
     'oauth_server' => [
+        'enabled' => false,
         'issuer' => env('APP_URL', 'http://localhost'),
         'resource' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1',
         'authorization_endpoint' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/oauth/authorize',
         'token_endpoint' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/oauth/token',
-        'registration_endpoint' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/oauth/register',
+        // This is intentionally null. Applications must expose and configure the
+        // endpoint before it is advertised in authorization-server metadata.
+        'registration_endpoint' => null,
         'scopes' => [],
+        // Null means the protected-resource metadata helper uses the complete
+        // application-owned scope catalog. Set a list when this resource exposes
+        // only a subset of that catalog.
+        'protected_resource_scopes' => null,
         'token_endpoint_auth_methods' => ['none'],
-        'resource_required_scope' => 'mcp:use',
+        // RFC 8707 has no discovery boolean. The resource parameter and the
+        // protected-resource metadata document are the interoperable signals.
+        'protected_resource_metadata_url' => null,
+        'auth_code_resource_column' => 'resource_uri',
+        'resource_column' => 'resource_uri',
+        'authorization_response_issuer' => [
+            // RFC 9207 is opt-in because the authorization response middleware must
+            // be installed on every authorization/consent route to make this true.
+            'enabled' => false,
+        ],
+        // The application owns its scope policy. Keep the legacy scalar for
+        // published-config compatibility, but do not assume a package scope.
+        'resource_required_scope' => null,
+        'resource_required_scopes' => [],
         'dynamic_clients' => [
-            'required_columns' => ['dynamically_registered_at'],
+            'enabled' => true,
+            'required_columns' => ['dynamically_registered_at', 'scopes'],
             'registered_at_column' => 'dynamically_registered_at',
             'last_used_at_column' => null,
-            'scopes_column' => null,
-            'enforce_registered_scopes' => false,
+            'scopes_column' => 'scopes',
+            // Retained for published-config compatibility; registered scopes are
+            // always enforced for dynamic clients in the resource middleware.
+            'enforce_registered_scopes' => true,
         ],
         'authorization_state' => [
             'cache_prefix' => 'oauth-resource:',

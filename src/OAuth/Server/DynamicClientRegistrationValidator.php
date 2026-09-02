@@ -22,7 +22,11 @@ final class DynamicClientRegistrationValidator
 
         // RFC 7591 requires unknown client metadata to be ignored. Validate the
         // fields this server acts on without rejecting harmless harness metadata.
-        $validator = Validator::make($request->json()->all(), [
+        $metadata = $request->json()->all();
+        if (! is_array($metadata)) {
+            throw new InvalidClientMetadata('Client registration requires a JSON object.');
+        }
+        $validator = Validator::make($metadata, [
             'client_name' => ['required', 'string', 'min:1', 'max:100'],
             'redirect_uris' => ['required', 'array', 'min:1', 'max:10'],
             'redirect_uris.*' => ['required', 'string', 'max:2048'],
@@ -31,7 +35,10 @@ final class DynamicClientRegistrationValidator
             'response_types' => ['sometimes', 'array', 'size:1'],
             'response_types.*' => ['string', 'in:code'],
             'token_endpoint_auth_method' => ['sometimes', 'string', 'in:none'],
-            'scope' => ['sometimes', 'string', 'min:1', 'max:2048'],
+            // An explicitly empty scope is meaningful: it registers a client with
+            // no requested scopes. Omission means the authorization server's
+            // configured catalog remains the upper bound.
+            'scope' => ['sometimes', 'string', 'max:2048'],
             'application_type' => ['sometimes', 'string', 'in:native'],
         ]);
         if ($validator->fails()) {
@@ -64,9 +71,9 @@ final class DynamicClientRegistrationValidator
         }
 
         $scopes = null;
-        if (isset($metadata['scope'])) {
+        if (array_key_exists('scope', $metadata)) {
             $scopes = self::parseScopes((string) $metadata['scope']);
-            if ($scopes === [] || array_diff($scopes, $allowedScopes) !== []) {
+            if (array_diff($scopes, $allowedScopes) !== []) {
                 throw new InvalidClientMetadata;
             }
         }
@@ -94,12 +101,19 @@ final class DynamicClientRegistrationValidator
             return false;
         }
 
-        $parts = parse_url($redirectUri);
+        try {
+            $parts = parse_url($redirectUri);
+        } catch (\ValueError) {
+            return false;
+        }
         if (! is_array($parts)
             || ! isset($parts['scheme'], $parts['host'])
             || isset($parts['fragment'])
             || isset($parts['user'])
             || isset($parts['pass'])) {
+            return false;
+        }
+        if (isset($parts['port']) && ((int) $parts['port'] < 1 || (int) $parts['port'] > 65535)) {
             return false;
         }
 

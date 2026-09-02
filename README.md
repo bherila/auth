@@ -74,6 +74,27 @@ no longer erases the nested defaults added since. Republish (`--tag=bherila-auth
   fresh code for it.
 - The package dispatches Laravel's `PasswordResetLinkSent` and `PasswordReset` events.
 
+OAuth/MCP authorization-server changes described below are intentionally staged for the
+next release after the pending signed `v0.10.0` release. Consumers should not enable
+`oauth_server.enabled` until they have run the OAuth metadata migration and added the
+resource-aware Passport middleware/configuration.
+
+## OAuth/MCP server upgrade notes (next release)
+
+This is an opt-in server capability. Existing OAuth clients and the identity-provider
+role are unaffected unless an application enables `oauth_server.enabled` and routes the
+server helpers. An application that currently owns custom resource-aware Passport
+repositories should migrate to the package repositories only after verifying its
+configured resource and applying the new migration; remove duplicate bindings so one
+repository is responsible for the resource checks.
+
+The configured resource must match what the MCP client sends and what the protected
+endpoint represents. For example, if the endpoint is `/api/v1/mcp`, do not silently use
+`/api/v1` unless that base URI is intentionally the resource covering all of those
+endpoints. Update the protected-resource metadata URL and API `WWW-Authenticate`
+challenge at the same time. If the metadata URL is omitted, the helper derives the
+RFC 9728 path-based well-known URL from `resource`.
+
 ## Upgrading to v0.5.0 (breaking)
 
 This release adds a required method to the `AuthUserPolicy` contract:
@@ -282,24 +303,86 @@ protocol and consent UX without enabling any routes automatically. Configure
 - `BWH\Auth\Http\Controllers\OAuthDynamicClientRegistrationController`
 - `BWH\Auth\Http\Middleware\EnforceOAuthPkce`
 - `BWH\Auth\Http\Middleware\EnforceOAuthResourceIndicator`
+- `BWH\Auth\Http\Middleware\AppendOAuthAuthorizationResponseIssuer` (only when RFC 9207 is enabled)
+- `BWH\Auth\OAuth\Server\OAuthProtectedResource`
 - `bherila-auth::oauth.authorize`
 
-The application remains responsible for its scope catalog, Passport token repository
-bindings, authorization policy, throttling, MCP tool catalog, and MCP instructions.
-Dynamic registration also deliberately does not alter Passport's application-owned
-schema. Before exposing the registration route, add an app migration for every column
-listed in `oauth_server.dynamic_clients.required_columns`; the default configuration
-expects a nullable, indexed `dynamically_registered_at` timestamp. Add the optional
-last-used and scopes columns only when the corresponding configuration enables them.
-If a custom scopes column is used, the configured Passport client model must cast it
-to an array (or store a JSON/string list the middleware can normalize).
-The controller returns `503 temporarily_unavailable` until all configured columns are
-present, so a missing migration fails closed.
+The smallest MCP server configuration is conceptually:
 
-Unknown dynamic-registration metadata is ignored as required by RFC 7591, while the
-fields used to create a public client are bounded and validated. Redirect URIs must
-use HTTPS or loopback HTTP, authorization requests require S256 PKCE, and a configured
-resource-required scope cannot be authorized without the matching resource indicator.
+```php
+'oauth_server' => [
+    'enabled' => true,
+    'issuer' => 'https://example.test',
+    'resource' => 'https://example.test/mcp',
+    'protected_resource_metadata_url' =>
+        'https://example.test/.well-known/oauth-protected-resource/mcp',
+    'scopes' => [
+        'mcp:use' => 'Connect through MCP',
+    ],
+    'resource_required_scopes' => ['mcp:use'],
+],
+```
+
+`resource` is the exact protected-resource identifier, not merely the authorization
+server origin; its path and trailing slash are significant. The application declares which entries in its own scope catalog require
+that resource. Set `protected_resource_scopes` when this protected resource should
+advertise only a subset of the server catalog. The package carries the validated value through authorization state,
+consent, the authorization-code record, token exchange, refresh-token exchange, the
+signed JWT `aud` (and `resource`) claims, and the access-token record. Its Passport
+repository binding also checks the signed audience and issuer on every bearer request,
+so a token issued for one configured resource cannot be replayed at another one.
+
+When `oauth_server.enabled` is true and Passport is installed, the package binds its
+resource-aware Passport repositories and access-token entity automatically. Routes are
+still application-owned. A typical app exposes the two metadata controller methods and
+uses Passport's routes with `EnforceOAuthPkce` and `EnforceOAuthResourceIndicator`.
+If the application has its own Passport client model, extend `ResourceClient` (or apply
+the same dynamic-client `firstParty()`/`skipsAuthorization()` behavior) rather than
+replacing that model with Passport's default; the package never overrides a custom model.
+For an API challenge, return `OAuthProtectedResource::unauthorizedResponse()` (or
+`insufficientScopeResponse([...])`) so `WWW-Authenticate` includes the configured
+`resource_metadata` URI.
+
+The package migration `2026_09_02_000000_add_oauth_server_metadata` adds the reusable
+Passport client registration fields and resource-binding fields when they are absent.
+Publish and run migrations before enabling the server. If an application uses custom
+column names or a custom Passport client model, configure the names and ensure the
+scopes attribute is stored as a JSON/string list the middleware can normalize. A
+missing resource column fails closed before a bound credential can be issued.
+
+Dynamic registration is opt-in in metadata: configure a registration endpoint and keep
+`dynamic_clients.enabled` true only when the application has routed the controller.
+Unknown metadata is ignored as required by RFC 7591. The accepted profile is a public
+authorization-code client: `authorization_code` + `refresh_token`, `code`, `none`, and
+native/HTTPS-or-loopback redirect URIs. The response never contains a reusable client
+secret. A supplied registration scope is an upper bound; an omitted scope leaves the
+configured server catalog as the upper bound, while an explicitly empty scope registers
+no scopes. On authorization requests, an omitted scope uses the Passport default scopes;
+an explicitly empty scope is rejected rather than silently falling back to those defaults.
+Registered-scope enforcement is always on for dynamic clients; the legacy
+`enforce_registered_scopes` setting is retained only so published configs remain readable.
+Dynamic registration does not grant consent or bypass the application policy.
+
+RFC 9207 issuer identification is disabled by default. If enabled, install the issuer
+middleware on every Passport authorization/consent route; otherwise leave the metadata
+flag disabled. The package currently advertises DCR for compatibility but does not
+advertise Client ID Metadata Documents and does not fetch arbitrary client URLs. CIMD
+support is intentionally deferred until URL-client identity resolution and hardened
+SSRF-safe document retrieval can be shipped together; see the [focused CIMD design
+issue](https://github.com/bherila/auth-laravel/issues/30).
+
+For a manual Codex smoke test, expose the protected-resource metadata and challenge
+routes publicly, configure DCR, and run the client against the exact protected-resource
+URL:
+
+```sh
+codex mcp add example --url https://example.test/mcp
+codex mcp login example
+```
+
+The package test suite exercises the Passport lifecycle and registration fixtures; a
+deployed application should still complete this browser/consent check in Codex (and,
+when applicable, ChatGPT developer mode) before claiming client interoperability.
 
 The shared consent view uses `oauth_server.consent` copy and labels so applications can
 retain domain-specific language without copying security-sensitive forms or styling.

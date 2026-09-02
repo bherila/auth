@@ -8,9 +8,12 @@ use BWH\Auth\Http\Middleware\EnforceOAuthResourceIndicator;
 use BWH\Auth\OAuth\Server\DynamicClientRegistrationValidator;
 use BWH\Auth\OAuth\Server\InvalidClientMetadata;
 use BWH\Auth\OAuth\Server\OAuthAuthorizationStateStore;
+use BWH\Auth\OAuth\Server\OAuthAuthorizationResponseIssuer;
+use BWH\Auth\OAuth\Server\OAuthProtectedResource;
 use BWH\Auth\OAuth\Server\OAuthResourceIndicator;
 use BWH\Auth\Tests\TestCase;
 use Illuminate\Http\Request;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Route;
 use Laravel\Passport\Passport;
@@ -35,8 +38,10 @@ class OAuthServerHelpersTest extends TestCase
                     'mcp:use' => 'Connect through MCP',
                 ],
                 'token_endpoint_auth_methods' => ['none'],
+                'protected_resource_metadata_url' => 'https://auth.example.test/.well-known/oauth-protected-resource/api/v1/mcp',
                 'resource_required_scope' => 'mcp:use',
                 'dynamic_clients' => [
+                    'enabled' => true,
                     'enforce_registered_scopes' => false,
                 ],
                 'authorization_state' => [
@@ -79,9 +84,21 @@ class OAuthServerHelpersTest extends TestCase
                 'code_challenge_methods_supported' => ['S256'],
                 'token_endpoint_auth_methods_supported' => ['none'],
                 'scopes_supported' => ['identity:read', 'mcp:use'],
-                'resource_indicators_supported' => true,
             ]);
         $this->assertStringContainsString('public', (string) $this->get('/metadata/authorization-test')->headers->get('Cache-Control'));
+
+        config(['bherila-auth.oauth_server.dynamic_clients.enabled' => false]);
+        $this->getJson('/metadata/authorization-test')->assertJsonMissingPath('registration_endpoint');
+        config(['bherila-auth.oauth_server.dynamic_clients.enabled' => true]);
+
+        config(['bherila-auth.oauth_server.registration_endpoint' => 'not-a-url']);
+        $this->getJson('/metadata/authorization-test')->assertJsonMissingPath('registration_endpoint');
+        config(['bherila-auth.oauth_server.registration_endpoint' => 'https://auth.example.test/oauth/register']);
+
+        config(['bherila-auth.oauth_server.authorization_response_issuer.enabled' => true]);
+        $this->getJson('/metadata/authorization-test')
+            ->assertJsonPath('authorization_response_iss_parameter_supported', true);
+        config(['bherila-auth.oauth_server.authorization_response_issuer.enabled' => false]);
 
         $this->getJson('/metadata/resource-test')->assertOk()->assertExactJson([
             'resource' => 'https://auth.example.test/api/v1',
@@ -89,6 +106,13 @@ class OAuthServerHelpersTest extends TestCase
             'scopes_supported' => ['identity:read', 'mcp:use'],
             'bearer_methods_supported' => ['header'],
         ]);
+
+        config(['bherila-auth.oauth_server.protected_resource_metadata_url' => null]);
+        $this->assertSame(
+            'https://auth.example.test/.well-known/oauth-protected-resource/api/v1',
+            OAuthProtectedResource::metadataUrl(),
+        );
+        config(['bherila-auth.oauth_server.protected_resource_metadata_url' => 'https://auth.example.test/.well-known/oauth-protected-resource/api/v1/mcp']);
 
         config([
             'bherila-auth.oauth_server.issuer' => 'https://auth.example.test/tenant/',
@@ -132,6 +156,60 @@ class OAuthServerHelpersTest extends TestCase
         $this->assertSame('mcp:use identity:read', $registration->responseMetadata('client-id', 123)['scope']);
     }
 
+    public function test_empty_scope_is_distinct_from_an_omitted_scope(): void
+    {
+        $empty = app(DynamicClientRegistrationValidator::class)->validate(
+            $this->jsonRequest([
+                'client_name' => 'No Scope Client',
+                'redirect_uris' => ['https://client.example.test/callback'],
+                'scope' => '',
+            ]),
+            ['identity:read', 'mcp:use'],
+        );
+        $omitted = app(DynamicClientRegistrationValidator::class)->validate(
+            $this->jsonRequest([
+                'client_name' => 'Catalog Client',
+                'redirect_uris' => ['https://client.example.test/callback'],
+            ]),
+            ['identity:read', 'mcp:use'],
+        );
+
+        $this->assertSame([], $empty->scopes);
+        $this->assertNull($omitted->scopes);
+        $this->assertSame('', $empty->responseMetadata('client-id', 123)['scope']);
+        $this->assertArrayNotHasKey('scope', $omitted->responseMetadata('client-id', 123));
+    }
+
+    public function test_dynamic_registration_body_is_bounded(): void
+    {
+        $this->expectException(InvalidClientMetadata::class);
+
+        app(DynamicClientRegistrationValidator::class)->validate(
+            Request::create(
+                '/oauth/register',
+                'POST',
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: str_repeat('x', 16_385),
+            ),
+            ['identity:read', 'mcp:use'],
+        );
+    }
+
+    public function test_dynamic_registration_requires_a_json_object(): void
+    {
+        $this->expectException(InvalidClientMetadata::class);
+
+        app(DynamicClientRegistrationValidator::class)->validate(
+            Request::create(
+                '/oauth/register',
+                'POST',
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: 'null',
+            ),
+            ['identity:read', 'mcp:use'],
+        );
+    }
+
     #[DataProvider('invalidRegistrationProvider')]
     public function test_dynamic_registration_rejects_unsafe_or_unsupported_metadata(array $metadata): void
     {
@@ -155,6 +233,7 @@ class OAuthServerHelpersTest extends TestCase
         ];
 
         yield 'non-loopback HTTP' => [[...$valid, 'redirect_uris' => ['http://client.example.test/callback']]];
+        yield 'invalid port' => [[...$valid, 'redirect_uris' => ['http://127.0.0.1:0/callback']]];
         yield 'fragment' => [[...$valid, 'redirect_uris' => ['https://client.example.test/callback#fragment']]];
         yield 'unknown scope' => [[...$valid, 'scope' => 'mcp:use records:delete']];
         yield 'confidential client' => [[...$valid, 'token_endpoint_auth_method' => 'client_secret_post']];
@@ -200,7 +279,7 @@ class OAuthServerHelpersTest extends TestCase
             $emptyScopeResponse = app(EnforceOAuthResourceIndicator::class)
                 ->handle($authorization, fn () => response('next'));
             $this->assertSame(400, $emptyScopeResponse->getStatusCode());
-            $this->assertStringContainsString('invalid_target', (string) $emptyScopeResponse->getContent());
+            $this->assertStringContainsString('invalid_scope', (string) $emptyScopeResponse->getContent());
 
             $token = Request::create('/oauth/token', 'POST', [
                 'resource' => 'https://other.example.test/api/v1',
@@ -213,7 +292,7 @@ class OAuthServerHelpersTest extends TestCase
                 ->handle($token, fn () => response('next'));
             $this->assertSame(400, $tokenResponse->getStatusCode());
 
-            $token->request->set('resource', 'https://auth.example.test/api/v1/');
+            $token->request->set('resource', 'HTTPS://AUTH.EXAMPLE.TEST:443/api/v1');
             $accepted = app(EnforceOAuthResourceIndicator::class)
                 ->handle($token, fn (Request $request) => response(
                     OAuthResourceIndicator::validatedFor($request) ?? 'missing',
@@ -228,9 +307,9 @@ class OAuthServerHelpersTest extends TestCase
     {
         $this->assertSame(
             'https://auth.example.test/api/v1',
-            OAuthResourceIndicator::canonicalize('HTTPS://AUTH.EXAMPLE.TEST:443/api/v1/'),
+            OAuthResourceIndicator::canonicalize('HTTPS://AUTH.EXAMPLE.TEST:443/api/v1'),
         );
-        $this->assertTrue(OAuthResourceIndicator::isConfiguredResource('https://auth.example.test/api/v1/'));
+        $this->assertFalse(OAuthResourceIndicator::isConfiguredResource('https://auth.example.test/api/v1/'));
         $this->assertNull(OAuthResourceIndicator::canonicalize('https://user@auth.example.test/api/v1'));
 
         $state = app(OAuthAuthorizationStateStore::class);
@@ -240,6 +319,76 @@ class OAuthServerHelpersTest extends TestCase
         $this->assertSame(OAuthResourceIndicator::resource(), $state->resourceFor('synthetic-approval-token'));
         $state->forgetResource('synthetic-approval-token');
         $this->assertNull($state->resourceFor('synthetic-approval-token'));
+    }
+
+    public function test_protected_resource_helper_builds_metadata_and_bearer_challenges(): void
+    {
+        $this->assertSame([
+            'resource' => 'https://auth.example.test/api/v1',
+            'authorization_servers' => ['https://auth.example.test'],
+            'scopes_supported' => ['identity:read', 'mcp:use'],
+            'bearer_methods_supported' => ['header'],
+        ], OAuthProtectedResource::metadata());
+
+        $challenge = OAuthProtectedResource::bearerChallenge(
+            'insufficient_scope',
+            'Choose a permitted scope',
+            ['mcp:use'],
+        );
+        $this->assertSame(
+            'Bearer error="insufficient_scope", error_description="Choose a permitted scope", scope="mcp:use", resource_metadata="https://auth.example.test/.well-known/oauth-protected-resource/api/v1/mcp"',
+            $challenge,
+        );
+
+        $response = OAuthProtectedResource::unauthorizedResponse();
+        $this->assertSame(401, $response->getStatusCode());
+        $this->assertSame(
+            'Bearer error="invalid_token", resource_metadata="https://auth.example.test/.well-known/oauth-protected-resource/api/v1/mcp"',
+            $response->headers->get('WWW-Authenticate'),
+        );
+
+        $forbidden = OAuthProtectedResource::insufficientScopeResponse(['mcp:use']);
+        $this->assertSame(403, $forbidden->getStatusCode());
+        $this->assertStringContainsString('scope="mcp:use"', (string) $forbidden->headers->get('WWW-Authenticate'));
+    }
+
+    public function test_rfc9207_issuer_is_exact_and_only_added_when_enabled(): void
+    {
+        $response = redirect('https://client.example.test/callback?code=synthetic&state=state');
+        $this->assertSame($response, OAuthAuthorizationResponseIssuer::decorate($response));
+        $this->assertStringNotContainsString('iss=', (string) $response->headers->get('Location'));
+
+        config(['bherila-auth.oauth_server.authorization_response_issuer.enabled' => true]);
+        OAuthAuthorizationResponseIssuer::decorate($response);
+        $this->assertStringContainsString('iss=https%3A%2F%2Fauth.example.test', (string) $response->headers->get('Location'));
+
+        config(['bherila-auth.oauth_server.issuer' => 'https://auth.example.test/tenant/']);
+        $response = redirect('https://client.example.test/callback?error=access_denied');
+        OAuthAuthorizationResponseIssuer::decorate($response);
+        $this->assertStringContainsString('iss=https%3A%2F%2Fauth.example.test%2Ftenant%2F', (string) $response->headers->get('Location'));
+
+        $fragmentResponse = redirect('https://client.example.test/callback#error=access_denied&state=state');
+        OAuthAuthorizationResponseIssuer::decorate($fragmentResponse);
+        $this->assertStringContainsString(
+            '#error=access_denied&state=state&iss=https%3A%2F%2Fauth.example.test%2Ftenant%2F',
+            (string) $fragmentResponse->headers->get('Location'),
+        );
+
+        $request = Request::create('/oauth/authorize', 'GET', ['scope' => 'identity:read']);
+        $request->setRouteResolver(static function (): RoutingRoute {
+            return (new RoutingRoute('GET', '/oauth/authorize', fn () => 'next'))
+                ->name('passport.authorizations.authorize');
+        });
+        $decoratedException = app(EnforceOAuthResourceIndicator::class)->handle(
+            $request,
+            static fn (): never => throw new HttpResponseException(
+                redirect('https://client.example.test/callback?error=temporarily_unavailable'),
+            ),
+        );
+        $this->assertStringContainsString(
+            'iss=https%3A%2F%2Fauth.example.test%2Ftenant%2F',
+            (string) $decoratedException->headers->get('Location'),
+        );
     }
 
     public function test_shared_consent_view_renders_identity_permissions_and_dynamic_redirect_warning(): void

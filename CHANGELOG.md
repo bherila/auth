@@ -4,6 +4,36 @@ Notable changes per release. Versions follow the tags published to
 [Packagist](https://packagist.org/packages/bherila/auth-laravel); anything older than
 the first entry here is in the git history.
 
+## Unreleased (recommended v0.11.0, after the pending v0.10.0 release)
+
+### OAuth/MCP authorization-server foundation
+
+- Added opt-in Passport repositories and a JWT access-token entity that carry one
+  configured protected-resource URI from authorization request and consent state through
+  authorization codes, access/refresh token exchange, and refresh rotation.
+- Resource-bound access tokens carry the protected resource in `aud` and `resource`, and
+  resource-server validation checks the stored binding, signed audience, configured issuer,
+  revocation state, and expiry before Passport authenticates the bearer.
+- Added the reusable RFC 9728 protected-resource metadata/challenge helper, including
+  `resource_metadata` and scope-bearing 401/403 `WWW-Authenticate` responses.
+- Added opt-in RFC 9207 authorization-response issuer decoration; the metadata flag is
+  emitted only when the corresponding middleware is enabled.
+- DCR metadata is advertised only when an endpoint is configured. Public clients accept
+  the current Codex-style native authorization-code + refresh-token profile, never receive
+  a reusable secret, and now retain explicit registered scope limits.
+- Added a safe, idempotent Passport metadata/resource-column migration and documented
+  consumer migration steps.
+- Resource URI identity now preserves a configured trailing slash, and the protected
+  resource helper derives the RFC 9728 path-based well-known metadata URL when no override
+  is configured.
+
+### Deferred
+
+- Client ID Metadata Documents are not advertised or fetched yet. URL-form client IDs
+  require a Passport client-identity adapter and hardened SSRF-safe document retrieval;
+  DCR remains available for compatibility. See [issue #30](https://github.com/bherila/auth-laravel/issues/30)
+  for the focused follow-up design.
+
 ## Unreleased (v0.10.0)
 
 Breaking: this release drops PHP 8.3 and Laravel 12. For a pre-1.0 package `^0.9`
