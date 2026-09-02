@@ -29,6 +29,8 @@ the first entry here is in the git history.
 - Dynamic registrations now persist the configured scope catalog when the request omits
   `scope`; legacy dynamic clients without a stored scope fail closed rather than becoming
   implicitly unrestricted.
+- Enabling the resource-aware Passport binding requires legacy Passport bearer tokens to
+  be reissued because they do not carry the package's issuer claim.
 
 ### Deferred
 

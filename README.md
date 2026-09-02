@@ -348,7 +348,12 @@ Passport client registration fields and resource-binding fields when they are ab
 Publish and run migrations before enabling the server. If an application uses custom
 column names or a custom Passport client model, configure the names and ensure the
 scopes attribute is stored as a JSON/string list the middleware can normalize. A
-missing resource column fails closed before a bound credential can be issued.
+missing resource column fails closed before a bound credential can be issued. Enabling
+the resource-aware Passport binding also switches new access tokens to the package
+issuer/audience format; legacy Passport JWTs without the package `iss` claim are
+rejected by the resource repository. Revoke or allow existing access tokens to expire,
+then reauthorize clients after the migration rather than carrying old bearer tokens
+across the cutover.
 
 Dynamic registration is opt-in in metadata: configure a registration endpoint and keep
 `dynamic_clients.enabled` true only when the application has routed the controller.
@@ -357,8 +362,9 @@ authorization-code client: `authorization_code` + `refresh_token`, `code`, `none
 native/HTTPS-or-loopback redirect URIs. The response never contains a reusable client
 secret. A supplied registration scope is an upper bound; an omitted scope explicitly
 registers the configured server catalog as the upper bound, while an explicitly empty
-scope registers no scopes. On authorization requests, an omitted scope uses the Passport default scopes;
-an explicitly empty scope is rejected rather than silently falling back to those defaults.
+scope registers no scopes. On authorization requests, an omitted scope uses the
+Passport default scopes; an explicitly empty scope is rejected rather than silently
+falling back to those defaults.
 Registered-scope enforcement is always on for dynamic clients; the legacy
 `enforce_registered_scopes` setting is retained only so published configs remain readable.
 Dynamic registration does not grant consent or bypass the application policy.
