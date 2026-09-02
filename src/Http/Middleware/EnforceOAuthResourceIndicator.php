@@ -154,7 +154,9 @@ final class EnforceOAuthResourceIndicator
         }
         $registeredScopes = $client->getAttribute($scopesColumn);
         if ($registeredScopes === null) {
-            return true;
+            // Registrations created before scope persistence was enabled are
+            // ambiguous; fail closed instead of treating them as unrestricted.
+            return false;
         }
         if (is_string($registeredScopes)) {
             $decoded = json_decode($registeredScopes, true);

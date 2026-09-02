@@ -26,6 +26,9 @@ the first entry here is in the git history.
 - Resource URI identity now preserves a configured trailing slash, and the protected
   resource helper derives the RFC 9728 path-based well-known metadata URL when no override
   is configured.
+- Dynamic registrations now persist the configured scope catalog when the request omits
+  `scope`; legacy dynamic clients without a stored scope fail closed rather than becoming
+  implicitly unrestricted.
 
 ### Deferred
 

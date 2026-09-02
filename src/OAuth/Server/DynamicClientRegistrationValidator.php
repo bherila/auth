@@ -70,7 +70,10 @@ final class DynamicClientRegistrationValidator
             throw new InvalidClientMetadata;
         }
 
-        $scopes = null;
+        // An omitted scope uses the application catalog as the client's explicit
+        // upper bound. This keeps a nullable registration field from becoming an
+        // accidental scope-escalation escape hatch.
+        $scopes = $allowedScopes;
         if (array_key_exists('scope', $metadata)) {
             $scopes = self::parseScopes((string) $metadata['scope']);
             if (array_diff($scopes, $allowedScopes) !== []) {

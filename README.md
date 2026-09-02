@@ -355,9 +355,9 @@ Dynamic registration is opt-in in metadata: configure a registration endpoint an
 Unknown metadata is ignored as required by RFC 7591. The accepted profile is a public
 authorization-code client: `authorization_code` + `refresh_token`, `code`, `none`, and
 native/HTTPS-or-loopback redirect URIs. The response never contains a reusable client
-secret. A supplied registration scope is an upper bound; an omitted scope leaves the
-configured server catalog as the upper bound, while an explicitly empty scope registers
-no scopes. On authorization requests, an omitted scope uses the Passport default scopes;
+secret. A supplied registration scope is an upper bound; an omitted scope explicitly
+registers the configured server catalog as the upper bound, while an explicitly empty
+scope registers no scopes. On authorization requests, an omitted scope uses the Passport default scopes;
 an explicitly empty scope is rejected rather than silently falling back to those defaults.
 Registered-scope enforcement is always on for dynamic clients; the legacy
 `enforce_registered_scopes` setting is retained only so published configs remain readable.

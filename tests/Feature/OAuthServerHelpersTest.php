@@ -175,9 +175,12 @@ class OAuthServerHelpersTest extends TestCase
         );
 
         $this->assertSame([], $empty->scopes);
-        $this->assertNull($omitted->scopes);
+        $this->assertSame(['identity:read', 'mcp:use'], $omitted->scopes);
         $this->assertSame('', $empty->responseMetadata('client-id', 123)['scope']);
-        $this->assertArrayNotHasKey('scope', $omitted->responseMetadata('client-id', 123));
+        $this->assertSame(
+            'identity:read mcp:use',
+            $omitted->responseMetadata('client-id', 123)['scope'],
+        );
     }
 
     public function test_dynamic_registration_body_is_bounded(): void
