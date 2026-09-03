@@ -358,8 +358,9 @@ across the cutover.
 Dynamic registration is opt-in in metadata: configure a registration endpoint and keep
 `dynamic_clients.enabled` true only when the application has routed the controller.
 Unknown metadata is ignored as required by RFC 7591. The accepted profile is a public
-authorization-code client: `authorization_code` + `refresh_token`, `code`, `none`, and
-native/HTTPS-or-loopback redirect URIs. The response never contains a reusable client
+authorization-code client: `authorization_code` + `refresh_token`, `code`, and `none`.
+Native clients may use HTTPS or explicit loopback development redirect URIs; hosted/web
+clients must use HTTPS redirect URIs. The response never contains a reusable client
 secret. A supplied registration scope is an upper bound; an omitted scope explicitly
 registers the configured server catalog as the upper bound, while an explicitly empty
 scope registers no scopes. On authorization requests, an omitted scope uses the

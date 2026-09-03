@@ -39,7 +39,7 @@ final class DynamicClientRegistrationValidator
             // no requested scopes. Omission means the authorization server's
             // configured catalog remains the upper bound.
             'scope' => ['sometimes', 'string', 'max:2048'],
-            'application_type' => ['sometimes', 'string', 'in:native'],
+            'application_type' => ['sometimes', 'string', 'in:native,web'],
         ]);
         if ($validator->fails()) {
             throw new InvalidClientMetadata;
@@ -58,9 +58,12 @@ final class DynamicClientRegistrationValidator
             throw new InvalidClientMetadata;
         }
 
+        $applicationType = isset($metadata['application_type'])
+            ? (string) $metadata['application_type']
+            : null;
         $redirectUris = [];
         foreach ($metadata['redirect_uris'] as $redirectUri) {
-            if (! is_string($redirectUri) || ! $this->validRedirectUri($redirectUri)) {
+            if (! is_string($redirectUri) || ! $this->validRedirectUri($redirectUri, $applicationType)) {
                 throw new InvalidClientMetadata;
             }
             $redirectUris[] = $redirectUri;
@@ -85,7 +88,7 @@ final class DynamicClientRegistrationValidator
             clientName: $clientName,
             redirectUris: $redirectUris,
             scopes: $scopes,
-            applicationType: isset($metadata['application_type']) ? (string) $metadata['application_type'] : null,
+            applicationType: $applicationType,
         );
     }
 
@@ -98,7 +101,7 @@ final class DynamicClientRegistrationValidator
         )));
     }
 
-    private function validRedirectUri(string $redirectUri): bool
+    private function validRedirectUri(string $redirectUri, ?string $applicationType): bool
     {
         if (filter_var($redirectUri, FILTER_VALIDATE_URL) === false) {
             return false;
@@ -124,6 +127,8 @@ final class DynamicClientRegistrationValidator
         $host = strtolower((string) $parts['host']);
 
         return $scheme === 'https'
-            || ($scheme === 'http' && in_array($host, ['localhost', '127.0.0.1', '[::1]'], true));
+            || ($applicationType !== 'web'
+                && $scheme === 'http'
+                && in_array($host, ['localhost', '127.0.0.1', '[::1]'], true));
     }
 }

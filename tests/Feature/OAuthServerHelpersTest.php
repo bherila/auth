@@ -172,6 +172,27 @@ class OAuthServerHelpersTest extends TestCase
         $this->assertSame('mcp:use identity:read', $registration->responseMetadata('client-id', 123)['scope']);
     }
 
+    public function test_dynamic_registration_accepts_a_hosted_public_client_with_an_https_redirect(): void
+    {
+        $registration = app(DynamicClientRegistrationValidator::class)->validate(
+            $this->jsonRequest([
+                'client_name' => 'ChatGPT',
+                'redirect_uris' => ['https://chatgpt.com/connector_platform_oauth_redirect'],
+                'grant_types' => ['authorization_code', 'refresh_token'],
+                'response_types' => ['code'],
+                'token_endpoint_auth_method' => 'none',
+                'application_type' => 'web',
+                'scope' => 'mcp:use',
+            ]),
+            ['identity:read', 'mcp:use'],
+        );
+
+        $this->assertSame('ChatGPT', $registration->clientName);
+        $this->assertSame('web', $registration->applicationType);
+        $this->assertSame(['https://chatgpt.com/connector_platform_oauth_redirect'], $registration->redirectUris);
+        $this->assertSame(['mcp:use'], $registration->scopes);
+    }
+
     public function test_empty_scope_is_distinct_from_an_omitted_scope(): void
     {
         $empty = app(DynamicClientRegistrationValidator::class)->validate(
@@ -256,7 +277,11 @@ class OAuthServerHelpersTest extends TestCase
         yield 'fragment' => [[...$valid, 'redirect_uris' => ['https://client.example.test/callback#fragment']]];
         yield 'unknown scope' => [[...$valid, 'scope' => 'mcp:use records:delete']];
         yield 'confidential client' => [[...$valid, 'token_endpoint_auth_method' => 'client_secret_post']];
-        yield 'web application type' => [[...$valid, 'application_type' => 'web']];
+        yield 'web application type with loopback redirect' => [[
+            ...$valid,
+            'application_type' => 'web',
+            'redirect_uris' => ['http://127.0.0.1:1455/callback'],
+        ]];
         yield 'control character in name' => [[...$valid, 'client_name' => "Synthetic\nClient"]];
     }
 

@@ -19,8 +19,9 @@ the first entry here is in the git history.
 - Added opt-in RFC 9207 authorization-response issuer decoration; the metadata flag is
   emitted only when the corresponding middleware is enabled.
 - DCR metadata is advertised only when an endpoint is configured. Public clients accept
-  the current Codex-style native authorization-code + refresh-token profile, never receive
-  a reusable secret, and now retain explicit registered scope limits.
+  native or hosted/web authorization-code + refresh-token profiles with `none` token
+  authentication, never receive a reusable secret, and retain explicit registered scope
+  limits; loopback redirects remain native-only.
 - Added a safe, idempotent Passport metadata/resource-column migration and documented
   consumer migration steps.
 - Metadata controller routes now fail closed with a non-cacheable 404 while the opt-in
