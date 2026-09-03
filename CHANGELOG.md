@@ -41,6 +41,9 @@ the first entry here is in the git history.
   accidentally register the server catalog instead.
 - Enabling the resource-aware Passport binding requires legacy Passport bearer tokens to
   be reissued because they do not carry the package's issuer claim.
+- Authorization resource state requires Laravel's default cache to persist across
+  requests and be shared by every authorization-server node; the request-local `array`
+  store is unsupported for this flow and causes issuance to fail closed.
 
 ### Deferred
 
