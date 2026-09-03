@@ -27,6 +27,9 @@ the first entry here is in the git history.
 - Metadata controller routes now fail closed with a non-cacheable 404 while the opt-in
   OAuth server is disabled, so accidentally routed discovery endpoints cannot advertise
   an inactive server.
+- Added `EnsureOAuthServerEnabled` for application-owned Passport authorization/token
+  routes, so disabling the opt-in server can stop new issuance and refresh processing
+  instead of hiding only package metadata and registration routes.
 - Resource URI identity now preserves a configured trailing slash, and the protected
   resource helper derives the RFC 9728 path-based well-known metadata URL when no override
   is configured.

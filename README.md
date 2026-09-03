@@ -301,6 +301,7 @@ protocol and consent UX without enabling any routes automatically. Configure
 
 - `BWH\Auth\Http\Controllers\OAuthMetadataController`
 - `BWH\Auth\Http\Controllers\OAuthDynamicClientRegistrationController`
+- `BWH\Auth\Http\Middleware\EnsureOAuthServerEnabled`
 - `BWH\Auth\Http\Middleware\EnforceOAuthPkce`
 - `BWH\Auth\Http\Middleware\EnforceOAuthResourceIndicator`
 - `BWH\Auth\Http\Middleware\AppendOAuthAuthorizationResponseIssuer` (only when RFC 9207 is enabled)
@@ -332,10 +333,19 @@ signed JWT `aud` (and `resource`) claims, and the access-token record. Its Passp
 repository binding also checks the signed audience and issuer on every bearer request,
 so a token issued for one configured resource cannot be replayed at another one.
 
+Add `EnsureOAuthServerEnabled` before the PKCE/resource middleware on every Passport
+authorization and token route. The package's metadata and registration controllers
+already honor the switch themselves, but Passport routes remain application-owned and
+registered independently. Without this route middleware, changing
+`oauth_server.enabled` to false does not by itself stop Passport from processing an
+existing client or refresh grant. The switch hides issuance routes; revoke existing
+credentials separately when an incident requires immediate credential invalidation.
+
 When `oauth_server.enabled` is true and Passport is installed, the package binds its
 resource-aware Passport repositories and access-token entity automatically. Routes are
 still application-owned. A typical app exposes the two metadata controller methods and
-uses Passport's routes with `EnforceOAuthPkce` and `EnforceOAuthResourceIndicator`.
+uses Passport's routes with `EnsureOAuthServerEnabled`, `EnforceOAuthPkce`, and
+`EnforceOAuthResourceIndicator`.
 If the application has its own Passport client model, extend `ResourceClient` (or apply
 the same dynamic-client `firstParty()`/`skipsAuthorization()` behavior) rather than
 replacing that model with Passport's default; the package never overrides a custom model.

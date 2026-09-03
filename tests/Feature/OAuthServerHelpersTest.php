@@ -3,6 +3,7 @@
 namespace BWH\Auth\Tests\Feature;
 
 use BWH\Auth\Http\Controllers\OAuthMetadataController;
+use BWH\Auth\Http\Middleware\EnsureOAuthServerEnabled;
 use BWH\Auth\Http\Middleware\EnforceOAuthPkce;
 use BWH\Auth\Http\Middleware\EnforceOAuthResourceIndicator;
 use BWH\Auth\OAuth\Server\DynamicClientRegistrationValidator;
@@ -69,6 +70,8 @@ class OAuthServerHelpersTest extends TestCase
             ->name('passport.authorizations.deny');
         Route::get('/metadata/authorization-test', [OAuthMetadataController::class, 'authorizationServer']);
         Route::get('/metadata/resource-test', [OAuthMetadataController::class, 'protectedResource']);
+        Route::get('/oauth/enabled-test', fn () => response()->json(['enabled' => true]))
+            ->middleware(EnsureOAuthServerEnabled::class);
     }
 
     public function test_metadata_is_built_from_the_application_scope_catalog(): void
@@ -145,6 +148,20 @@ class OAuthServerHelpersTest extends TestCase
             ->assertNotFound()
             ->assertExactJson(['error' => 'not_found']);
         $this->assertStringContainsString('no-store', (string) $protectedResource->headers->get('Cache-Control'));
+    }
+
+    public function test_application_oauth_routes_can_fail_closed_when_the_server_is_disabled(): void
+    {
+        $this->getJson('/oauth/enabled-test')->assertOk()->assertExactJson(['enabled' => true]);
+
+        config(['bherila-auth.oauth_server.enabled' => false]);
+
+        $disabled = $this->getJson('/oauth/enabled-test')
+            ->assertNotFound()
+            ->assertExactJson(['error' => 'not_found'])
+            ->assertHeader('Pragma', 'no-cache')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->assertStringContainsString('no-store', (string) $disabled->headers->get('Cache-Control'));
     }
 
     public function test_dynamic_registration_accepts_codex_native_metadata_and_ignores_unknown_fields(): void

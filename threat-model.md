@@ -124,6 +124,7 @@ that returns an `OAuthProtectedResource` bearer challenge.
 | Dynamic-client scope escalation | A public client registers narrowly and later asks for broader application permissions. | Registration scopes are checked against the application catalog and stored on the client; dynamic-client requests are always required to be a subset of registered scopes (or the configured catalog when registration omitted one); consent remains in the flow; refresh cannot add scopes. DCR parses its bounded raw JSON document so Laravel's empty-string normalization cannot change an explicitly empty scope into an omitted scope. | Apply the OAuth migration and make the configured scope catalog the sole source of application permissions. The legacy `enforce_registered_scopes` switch is not a security bypass. |
 | Public-client secret misuse | A public MCP client receives a reusable secret or is treated as trusted merely because it used DCR. | DCR creates `confidential:false` clients with no response secret; only public auth-code + refresh grants are accepted; the shared consent path remains active. The accepted application types are `native` and `web`; loopback HTTP is allowed only for native/unspecified development clients, while hosted/web clients require HTTPS. | Do not add a client secret to native/loopback or hosted public clients, and do not mark dynamic clients first-party in an application policy/model override. |
 | Protected-resource discovery failure | A client cannot discover the authorization server or does not understand the API challenge. | Reusable RFC 9728 metadata and `WWW-Authenticate` helpers include `authorization_servers`, supported scopes, bearer method, and `resource_metadata` when configured. | Route the metadata document at the exact configured URI and return the helper's challenge from the MCP endpoint's unauthenticated/insufficient-scope responses. |
+| Disabled server still issues credentials | An operator turns off metadata/DCR but Passport's separately registered authorization or token routes continue processing existing clients and refresh grants. | `EnsureOAuthServerEnabled` returns a non-cacheable 404 before application-owned Passport routes execute. Package metadata and DCR controllers enforce the same opt-in switch themselves. | Install the gate on every Passport authorization/token route, clear cached configuration after changing the flag, and revoke existing credentials separately when required. |
 | Unsafe client metadata retrieval | A URL-form client ID causes server-side fetches into private infrastructure. | Client ID Metadata Documents are not enabled or advertised in this release; no arbitrary client URL is fetched. | Use DCR compatibility for now. Do not add `client_id_metadata_document_supported` until the follow-up implementation includes URL identity resolution, bounded fetches, redirect policy, DNS/IP SSRF defenses, and safe caching. |
 | Dependency compromise | Composer package or transitive dependency is compromised. | Package is versioned and installable from tagged GitHub source. | Pin Composer lockfiles, review dependency updates, run CI, monitor advisories. |
 
@@ -154,9 +155,9 @@ These are gaps in package behavior that the threat table flags above. They are l
   `2026_09_02_000000_add_oauth_server_metadata` before issuing bound tokens.
 - Review DCR registrations; public clients must have no reusable secret and must go through
   consent. Registered-scope enforcement is always active.
-- Add `EnforceOAuthPkce` and `EnforceOAuthResourceIndicator` to the Passport routes; if
-  RFC 9207 is enabled, add `AppendOAuthAuthorizationResponseIssuer` to every authorization
-  and consent route.
+- Add `EnsureOAuthServerEnabled`, `EnforceOAuthPkce`, and
+  `EnforceOAuthResourceIndicator` to the Passport routes; if RFC 9207 is enabled, add
+  `AppendOAuthAuthorizationResponseIssuer` to every authorization and consent route.
 - Return `OAuthProtectedResource::unauthorizedResponse()` / `insufficientScopeResponse()`
   from the protected endpoint and verify the challenge's `resource_metadata` URI.
 - Configure `bherila-auth.passkeys.allowed_origins` for every trusted production origin.
