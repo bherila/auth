@@ -23,6 +23,9 @@ the first entry here is in the git history.
   a reusable secret, and now retain explicit registered scope limits.
 - Added a safe, idempotent Passport metadata/resource-column migration and documented
   consumer migration steps.
+- Metadata controller routes now fail closed with a non-cacheable 404 while the opt-in
+  OAuth server is disabled, so accidentally routed discovery endpoints cannot advertise
+  an inactive server.
 - Resource URI identity now preserves a configured trailing slash, and the protected
   resource helper derives the RFC 9728 path-based well-known metadata URL when no override
   is configured.

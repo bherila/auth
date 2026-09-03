@@ -11,6 +11,10 @@ final class OAuthMetadataController
 {
     public function authorizationServer(): JsonResponse
     {
+        if (! $this->enabled()) {
+            return $this->notFound();
+        }
+
         $metadata = [
             'issuer' => OAuthResourceIndicator::issuer(),
             'authorization_endpoint' => $this->requiredUrl('authorization_endpoint'),
@@ -40,7 +44,16 @@ final class OAuthMetadataController
 
     public function protectedResource(): JsonResponse
     {
+        if (! $this->enabled()) {
+            return $this->notFound();
+        }
+
         return OAuthProtectedResource::metadataResponse();
+    }
+
+    private function enabled(): bool
+    {
+        return (bool) config('bherila-auth.oauth_server.enabled', false);
     }
 
     /** @return list<string> */
@@ -103,6 +116,15 @@ final class OAuthMetadataController
     {
         return response()->json($payload)->withHeaders([
             'Cache-Control' => 'public, max-age=300',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    private function notFound(): JsonResponse
+    {
+        return response()->json(['error' => 'not_found'], 404, [
+            'Cache-Control' => 'no-store',
+            'Pragma' => 'no-cache',
             'X-Content-Type-Options' => 'nosniff',
         ]);
     }

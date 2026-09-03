@@ -28,6 +28,7 @@ class OAuthServerHelpersTest extends TestCase
         config([
             'app.name' => 'Synthetic App',
             'bherila-auth.oauth_server' => [
+                'enabled' => true,
                 'issuer' => 'https://auth.example.test',
                 'resource' => 'https://auth.example.test/api/v1',
                 'authorization_endpoint' => 'https://auth.example.test/oauth/authorize',
@@ -129,6 +130,21 @@ class OAuthServerHelpersTest extends TestCase
             'bherila-auth.oauth_server.issuer' => 'https://auth.example.test',
             'bherila-auth.oauth_server.resource' => 'https://auth.example.test/api/v1',
         ]);
+    }
+
+    public function test_metadata_is_not_advertised_when_the_oauth_server_is_disabled(): void
+    {
+        config(['bherila-auth.oauth_server.enabled' => false]);
+
+        $authorization = $this->getJson('/metadata/authorization-test')
+            ->assertNotFound()
+            ->assertExactJson(['error' => 'not_found']);
+        $this->assertStringContainsString('no-store', (string) $authorization->headers->get('Cache-Control'));
+
+        $protectedResource = $this->getJson('/metadata/resource-test')
+            ->assertNotFound()
+            ->assertExactJson(['error' => 'not_found']);
+        $this->assertStringContainsString('no-store', (string) $protectedResource->headers->get('Cache-Control'));
     }
 
     public function test_dynamic_registration_accepts_codex_native_metadata_and_ignores_unknown_fields(): void
