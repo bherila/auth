@@ -33,6 +33,9 @@ the first entry here is in the git history.
 - Dynamic registrations now persist the configured scope catalog when the request omits
   `scope`; legacy dynamic clients without a stored scope fail closed rather than becoming
   implicitly unrestricted.
+- Dynamic registration validates the bounded raw JSON document so Laravel's global empty-
+  string normalization cannot turn an explicitly empty `scope` into an omitted scope and
+  accidentally register the server catalog instead.
 - Enabling the resource-aware Passport binding requires legacy Passport bearer tokens to
   be reissued because they do not carry the package's issuer claim.
 

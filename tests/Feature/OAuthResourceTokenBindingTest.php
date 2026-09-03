@@ -8,7 +8,6 @@ use BWH\Auth\Http\Middleware\AppendOAuthAuthorizationResponseIssuer;
 use BWH\Auth\Http\Middleware\EnforceOAuthPkce;
 use BWH\Auth\Http\Middleware\EnforceOAuthResourceIndicator;
 use BWH\Auth\OAuth\Server\OAuthResourceIndicator;
-use BWH\Auth\OAuth\Server\ResourceAccessToken;
 use BWH\Auth\OAuth\Server\ResourceAccessTokenRepository;
 use BWH\Auth\OAuth\Server\ResourceAuthCodeRepository;
 use BWH\Auth\OAuth\Server\ResourceClient;
@@ -16,9 +15,11 @@ use BWH\Auth\OAuth\Server\ResourceRefreshTokenRepository;
 use BWH\Auth\Tests\Fixtures\FailingDynamicRegistrationClient;
 use BWH\Auth\Tests\Fixtures\User;
 use BWH\Auth\Tests\TestCase;
+use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Testing\TestResponse;
 use Laravel\Passport\Bridge\AccessToken;
 use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
 use Laravel\Passport\Bridge\AuthCodeRepository as PassportAuthCodeRepository;
@@ -107,7 +108,8 @@ final class OAuthResourceTokenBindingTest extends TestCase
         }
 
         Route::get('/mcp', fn () => response()->json(['ok' => true]))->middleware('auth:api');
-        Route::post('/oauth/register', OAuthDynamicClientRegistrationController::class);
+        Route::post('/oauth/register', OAuthDynamicClientRegistrationController::class)
+            ->middleware(ConvertEmptyStringsToNull::class);
     }
 
     protected function tearDown(): void
@@ -477,6 +479,19 @@ final class OAuthResourceTokenBindingTest extends TestCase
         $this->assertContains(self::RESOURCE, $claims['aud'] ?? []);
     }
 
+    public function test_explicit_empty_registration_scope_survives_laravel_input_normalization(): void
+    {
+        $response = $this->postJson('/oauth/register', [
+            'client_name' => 'No Scope Client',
+            'redirect_uris' => ['https://client.example.test/callback'],
+            'scope' => '',
+        ]);
+
+        $response->assertCreated()->assertJsonPath('scope', '');
+        $client = Passport::client()->newQuery()->findOrFail($response->json('client_id'));
+        $this->assertSame([], $client->scopes);
+    }
+
     /** @return array{User, Client} */
     private function userAndPublicClient(array $scopes): array
     {
@@ -502,8 +517,7 @@ final class OAuthResourceTokenBindingTest extends TestCase
         User $user,
         Client $client,
         string $redirectUri = 'http://127.0.0.1:1455/callback',
-    ): \Illuminate\Testing\TestResponse
-    {
+    ): TestResponse {
         $verifier = str_repeat('z', 43);
         $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
         $authorization = $this->actingAs($user)->get('/oauth/authorize?'.http_build_query([
@@ -540,11 +554,11 @@ final class OAuthResourceTokenBindingTest extends TestCase
             'private_key_bits' => 2048,
         ]);
         if ($key === false || ! openssl_pkey_export($key, $privateKey)) {
-            throw new \RuntimeException('Unable to create Passport test keys.');
+            throw new RuntimeException('Unable to create Passport test keys.');
         }
         $details = openssl_pkey_get_details($key);
         if (! is_array($details) || ! is_string($details['key'] ?? null)) {
-            throw new \RuntimeException('Unable to read Passport test public key.');
+            throw new RuntimeException('Unable to read Passport test public key.');
         }
 
         return [$privateKey, $details['key']];

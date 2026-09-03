@@ -4,6 +4,7 @@ namespace BWH\Auth\OAuth\Server;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use JsonException;
 
 final class DynamicClientRegistrationValidator
 {
@@ -22,7 +23,11 @@ final class DynamicClientRegistrationValidator
 
         // RFC 7591 requires unknown client metadata to be ignored. Validate the
         // fields this server acts on without rejecting harmless harness metadata.
-        $metadata = $request->json()->all();
+        try {
+            $metadata = json_decode((string) $request->getContent(), true, 64, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            throw new InvalidClientMetadata('Client registration requires a JSON object.');
+        }
         if (! is_array($metadata)) {
             throw new InvalidClientMetadata('Client registration requires a JSON object.');
         }
