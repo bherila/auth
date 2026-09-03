@@ -11,7 +11,8 @@ final class OAuthAuthorizationResponseIssuer
 {
     public static function decorate(Response $response): Response
     {
-        if (! config('bherila-auth.oauth_server.authorization_response_issuer.enabled', false)
+        if (! config('bherila-auth.oauth_server.enabled', false)
+            || ! config('bherila-auth.oauth_server.authorization_response_issuer.enabled', false)
             || $response->isRedirection() === false) {
             return $response;
         }

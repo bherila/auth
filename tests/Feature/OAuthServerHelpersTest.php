@@ -403,6 +403,11 @@ class OAuthServerHelpersTest extends TestCase
         $this->assertStringNotContainsString('iss=', (string) $response->headers->get('Location'));
 
         config(['bherila-auth.oauth_server.authorization_response_issuer.enabled' => true]);
+        config(['bherila-auth.oauth_server.enabled' => false]);
+        OAuthAuthorizationResponseIssuer::decorate($response);
+        $this->assertStringNotContainsString('iss=', (string) $response->headers->get('Location'));
+
+        config(['bherila-auth.oauth_server.enabled' => true]);
         OAuthAuthorizationResponseIssuer::decorate($response);
         $this->assertStringContainsString('iss=https%3A%2F%2Fauth.example.test', (string) $response->headers->get('Location'));
 
