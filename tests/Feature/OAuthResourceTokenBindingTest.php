@@ -217,6 +217,10 @@ final class OAuthResourceTokenBindingTest extends TestCase
             'error=invalid_target',
             (string) $missingAuthorizationResource->headers->get('Location'),
         );
+        $this->assertStringContainsString(
+            'no-store',
+            (string) $missingAuthorizationResource->headers->get('Cache-Control'),
+        );
         $wrongAuthorizationResource = $this->actingAs($user)
             ->get('/oauth/authorize?'.http_build_query(
                 $query + ['resource' => 'https://other.example.test/mcp'],

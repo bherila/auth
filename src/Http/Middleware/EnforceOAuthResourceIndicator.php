@@ -239,10 +239,11 @@ final class EnforceOAuthResourceIndicator
         }
 
         $separator = str_contains($redirectUri, '?') ? '&' : '?';
+        $response = redirect()->away($redirectUri.$separator.http_build_query($parameters));
+        $response->headers->set('Cache-Control', 'no-store');
+        $response->headers->set('Pragma', 'no-cache');
 
-        return OAuthAuthorizationResponseIssuer::decorate(
-            redirect()->away($redirectUri.$separator.http_build_query($parameters)),
-        );
+        return OAuthAuthorizationResponseIssuer::decorate($response);
     }
 
     private function jsonAuthorizationError(string $error, string $description): JsonResponse
