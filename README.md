@@ -333,6 +333,14 @@ signed JWT `aud` (and `resource`) claims, and the access-token record. Its Passp
 repository binding also checks the signed audience and issuer on every bearer request,
 so a token issued for one configured resource cannot be replayed at another one.
 
+Authorization resource state spans the authorization, login, and consent requests.
+Configure Laravel's default cache repository as a persistent store shared by every
+authorization-server node; the `array` store is request/process-local and is not
+suitable. If that state is unavailable, the package fails closed rather than issuing
+an unbound credential. Keep its TTL at least as long as the browser session lifetime
+(the package defaults to that lifetime) and do not evict the configured
+`authorization_state.cache_prefix` during an active authorization flow.
+
 Add `EnsureOAuthServerEnabled` before the PKCE/resource middleware on every Passport
 authorization and token route. The package's metadata and registration controllers
 already honor the switch themselves, but Passport routes remain application-owned and

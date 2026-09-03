@@ -72,6 +72,8 @@ return [
             'enforce_registered_scopes' => true,
         ],
         'authorization_state' => [
+            // Uses Laravel's default cache repository. It must persist across
+            // requests and be shared by every authorization-server node.
             'cache_prefix' => 'oauth-resource:',
             'ttl_seconds' => null,
         ],
