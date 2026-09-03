@@ -64,12 +64,16 @@ final class OAuthDynamicClientRegistrationController
             ], 400);
         }
 
-        $client = $clients->createAuthorizationCodeGrantClient(
-            $registration->clientName,
-            $registration->redirectUris,
-            confidential: false,
-        );
-        $client->forceFill($this->clientAttributes($registration))->save();
+        $client = $clientModel->getConnection()->transaction(function () use ($clients, $registration) {
+            $client = $clients->createAuthorizationCodeGrantClient(
+                $registration->clientName,
+                $registration->redirectUris,
+                confidential: false,
+            );
+            $client->forceFill($this->clientAttributes($registration))->save();
+
+            return $client;
+        });
 
         return $this->noStore($registration->responseMetadata(
             (string) $client->id,

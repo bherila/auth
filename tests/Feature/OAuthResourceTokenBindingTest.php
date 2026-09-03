@@ -10,19 +10,22 @@ use BWH\Auth\OAuth\Server\OAuthResourceIndicator;
 use BWH\Auth\OAuth\Server\ResourceAccessToken;
 use BWH\Auth\OAuth\Server\ResourceAccessTokenRepository;
 use BWH\Auth\OAuth\Server\ResourceAuthCodeRepository;
+use BWH\Auth\OAuth\Server\ResourceClient;
 use BWH\Auth\OAuth\Server\ResourceRefreshTokenRepository;
+use BWH\Auth\Tests\Fixtures\FailingDynamicRegistrationClient;
 use BWH\Auth\Tests\Fixtures\User;
-use Illuminate\Support\Facades\Route;
+use BWH\Auth\Tests\TestCase;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Route;
+use Laravel\Passport\Bridge\AccessToken;
 use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
 use Laravel\Passport\Bridge\AuthCodeRepository as PassportAuthCodeRepository;
 use Laravel\Passport\Bridge\RefreshTokenRepository as PassportRefreshTokenRepository;
 use Laravel\Passport\Client;
-use Laravel\Passport\Bridge\AccessToken;
 use Laravel\Passport\ClientRepository;
 use Laravel\Passport\Passport;
 use Laravel\Passport\PassportServiceProvider;
-use BWH\Auth\Tests\TestCase;
+use RuntimeException;
 
 final class OAuthResourceTokenBindingTest extends TestCase
 {
@@ -371,6 +374,34 @@ final class OAuthResourceTokenBindingTest extends TestCase
             'client_name' => 'Disabled Client',
             'redirect_uris' => ['https://client.example.test/callback'],
         ])->assertNotFound();
+    }
+
+    public function test_dcr_rolls_back_the_client_when_registration_metadata_cannot_be_saved(): void
+    {
+        $before = Passport::client()->newQuery()->count();
+        Passport::useClientModel(FailingDynamicRegistrationClient::class);
+        $this->withoutExceptionHandling();
+        $failure = null;
+
+        try {
+            $this->postJson('/oauth/register', [
+                'client_name' => 'Rollback Client',
+                'redirect_uris' => ['https://client.example.test/callback'],
+                'grant_types' => ['authorization_code', 'refresh_token'],
+                'response_types' => ['code'],
+                'token_endpoint_auth_method' => 'none',
+                'application_type' => 'web',
+                'scope' => 'mcp:use',
+            ]);
+        } catch (RuntimeException $exception) {
+            $failure = $exception;
+        } finally {
+            Passport::useClientModel(ResourceClient::class);
+        }
+
+        self::assertInstanceOf(RuntimeException::class, $failure);
+        self::assertSame('Synthetic dynamic client metadata failure.', $failure->getMessage());
+        self::assertSame($before, Passport::client()->newQuery()->count());
     }
 
     public function test_hosted_public_registration_completes_the_resource_bound_authorization_flow(): void
