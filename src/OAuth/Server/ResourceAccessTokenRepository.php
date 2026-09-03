@@ -137,6 +137,7 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
 
         $request = $this->request();
         $serializedToken = $request?->bearerToken();
+        $expectedResource = $request === null ? null : OAuthResourceIndicator::expectedFor($request);
         if (! OAuthResourceIndicator::tokenHasIssuer($serializedToken, $issuer)) {
             return true;
         }
@@ -148,11 +149,17 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
 
             // A resource-bearing JWT without its database binding is incomplete;
             // never silently downgrade it to an unbound Passport token.
-            return OAuthResourceIndicator::tokenHasAnyResourceAudience($serializedToken)
+            return $expectedResource !== null
+                || OAuthResourceIndicator::tokenHasAnyResourceAudience($serializedToken)
                 || is_string($claims['resource'] ?? null);
         }
 
-        if ($storedResource === null || $storedResource !== $configuredResource) {
+        // A resource-bound token is valid only where application policy has
+        // explicitly marked the current route with its expected audience.
+        if ($expectedResource === null
+            || $storedResource === null
+            || $storedResource !== $configuredResource
+            || $storedResource !== $expectedResource) {
             return true;
         }
 

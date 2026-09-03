@@ -382,6 +382,21 @@ class OAuthServerHelpersTest extends TestCase
         $this->assertNull($state->resourceFor('synthetic-approval-token'));
     }
 
+    public function test_expected_resource_is_an_explicit_request_boundary(): void
+    {
+        $request = Request::create('/mcp', 'GET');
+
+        $this->assertNull(OAuthResourceIndicator::expectedFor($request));
+        $this->assertSame(
+            'https://auth.example.test/api/v1',
+            OAuthResourceIndicator::expectConfiguredFor($request),
+        );
+        $this->assertSame(
+            'https://auth.example.test/api/v1',
+            OAuthResourceIndicator::expectedFor($request),
+        );
+    }
+
     public function test_protected_resource_helper_builds_metadata_and_bearer_challenges(): void
     {
         $this->assertSame([

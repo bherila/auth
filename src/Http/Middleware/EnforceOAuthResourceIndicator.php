@@ -222,10 +222,6 @@ final class EnforceOAuthResourceIndicator
 
     private function authorizationError(Request $request, string $error, string $description): Response
     {
-        if (! config('bherila-auth.oauth_server.authorization_response_issuer.enabled', false)) {
-            return $this->jsonAuthorizationError($error, $description);
-        }
-
         $redirectUri = $this->validatedRedirectUri($request);
         if ($redirectUri === null) {
             // Never redirect an error until the client and redirect URI have been

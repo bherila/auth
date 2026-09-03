@@ -13,7 +13,8 @@ the first entry here is in the git history.
   authorization codes, access/refresh token exchange, and refresh rotation.
 - Resource-bound access tokens carry the protected resource in `aud` and `resource`, and
   resource-server validation checks the stored binding, signed audience, configured issuer,
-  revocation state, and expiry before Passport authenticates the bearer.
+  route-declared expected resource, revocation state, and expiry before Passport
+  authenticates the bearer. Bound tokens fail closed on unmarked Passport routes.
 - Added the reusable RFC 9728 protected-resource metadata/challenge helper, including
   `resource_metadata` and scope-bearing 401/403 `WWW-Authenticate` responses.
 - Added opt-in RFC 9207 authorization-response issuer decoration; the metadata flag is
@@ -41,6 +42,8 @@ the first entry here is in the git history.
   accidentally register the server catalog instead.
 - Enabling the resource-aware Passport binding requires legacy Passport bearer tokens to
   be reissued because they do not carry the package's issuer claim.
+- Protected routes accepting bound credentials must put `ExpectOAuthResource` before
+  Passport authentication (or set the same request expectation before direct validation).
 - Authorization resource state requires Laravel's default cache to persist across
   requests and be shared by every authorization-server node; the request-local `array`
   store is unsupported for this flow and causes issuance to fail closed.

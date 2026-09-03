@@ -8,6 +8,7 @@ use BWH\Auth\OAuth\Server\InvalidClientMetadata;
 use BWH\Auth\OAuth\Server\OAuthResourceIndicator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Laravel\Passport\Client;
 use Laravel\Passport\ClientRepository;
 use Laravel\Passport\Passport;
 
@@ -70,7 +71,7 @@ final class OAuthDynamicClientRegistrationController
                 $registration->redirectUris,
                 confidential: false,
             );
-            $client->forceFill($this->clientAttributes($registration))->save();
+            $client->forceFill($this->clientAttributes($registration, $client))->save();
 
             return $client;
         });
@@ -82,7 +83,7 @@ final class OAuthDynamicClientRegistrationController
     }
 
     /** @return array<string, mixed> */
-    private function clientAttributes(DynamicClientRegistration $registration): array
+    private function clientAttributes(DynamicClientRegistration $registration, Client $client): array
     {
         $attributes = [];
         $registeredAt = $this->dynamicClientConfig('registered_at_column');
@@ -95,7 +96,9 @@ final class OAuthDynamicClientRegistrationController
         }
         $scopes = $this->dynamicClientConfig('scopes_column');
         if (is_string($scopes) && $scopes !== '') {
-            $attributes[$scopes] = $registration->scopes;
+            $attributes[$scopes] = $client->hasCast($scopes, ['array', 'json', 'collection'])
+                ? $registration->scopes
+                : json_encode($registration->scopes, JSON_THROW_ON_ERROR);
         }
 
         return $attributes;

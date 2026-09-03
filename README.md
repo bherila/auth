@@ -304,6 +304,7 @@ protocol and consent UX without enabling any routes automatically. Configure
 - `BWH\Auth\Http\Middleware\EnsureOAuthServerEnabled`
 - `BWH\Auth\Http\Middleware\EnforceOAuthPkce`
 - `BWH\Auth\Http\Middleware\EnforceOAuthResourceIndicator`
+- `BWH\Auth\Http\Middleware\ExpectOAuthResource`
 - `BWH\Auth\Http\Middleware\AppendOAuthAuthorizationResponseIssuer` (only when RFC 9207 is enabled)
 - `BWH\Auth\OAuth\Server\OAuthProtectedResource`
 - `bherila-auth::oauth.authorize`
@@ -320,8 +321,16 @@ The smallest MCP server configuration is conceptually:
     'scopes' => [
         'mcp:use' => 'Connect through MCP',
     ],
-    'resource_required_scopes' => ['mcp:use'],
+'resource_required_scopes' => ['mcp:use'],
 ],
+```
+
+Register the same application-owned catalog with Passport during application
+boot; package configuration defines policy but does not mutate Passport's global
+scope registry:
+
+```php
+Passport::tokensCan(config('bherila-auth.oauth_server.scopes', []));
 ```
 
 `resource` is the exact protected-resource identifier, not merely the authorization
@@ -360,6 +369,13 @@ replacing that model with Passport's default; the package never overrides a cust
 For an API challenge, return `OAuthProtectedResource::unauthorizedResponse()` (or
 `insufficientScopeResponse([...])`) so `WWW-Authenticate` includes the configured
 `resource_metadata` URI.
+
+Put `ExpectOAuthResource` before `auth:api` (or call
+`OAuthResourceIndicator::expectConfiguredFor($request)` before invoking Passport's
+resource server directly) on every endpoint that accepts the bound credential.
+Resource-bound tokens fail closed on Passport-protected routes that do not declare
+the expected audience, preventing an MCP token from being replayed at a different
+API in the same application.
 
 The package migration `2026_09_02_000000_add_oauth_server_metadata` adds the reusable
 Passport client registration fields and resource-binding fields when they are absent.

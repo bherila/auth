@@ -7,6 +7,7 @@ use BWH\Auth\Http\Controllers\OAuthDynamicClientRegistrationController;
 use BWH\Auth\Http\Middleware\AppendOAuthAuthorizationResponseIssuer;
 use BWH\Auth\Http\Middleware\EnforceOAuthPkce;
 use BWH\Auth\Http\Middleware\EnforceOAuthResourceIndicator;
+use BWH\Auth\Http\Middleware\ExpectOAuthResource;
 use BWH\Auth\OAuth\Server\OAuthResourceIndicator;
 use BWH\Auth\OAuth\Server\ResourceAccessTokenRepository;
 use BWH\Auth\OAuth\Server\ResourceAuthCodeRepository;
@@ -15,10 +16,12 @@ use BWH\Auth\OAuth\Server\ResourceRefreshTokenRepository;
 use BWH\Auth\Tests\Fixtures\FailingDynamicRegistrationClient;
 use BWH\Auth\Tests\Fixtures\User;
 use BWH\Auth\Tests\TestCase;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 use Laravel\Passport\Bridge\AccessToken;
 use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
@@ -107,7 +110,10 @@ final class OAuthResourceTokenBindingTest extends TestCase
             }
         }
 
-        Route::get('/mcp', fn () => response()->json(['ok' => true]))->middleware('auth:api');
+        Route::get('/mcp', fn () => response()->json(['ok' => true]))
+            ->middleware([ExpectOAuthResource::class, 'auth:api']);
+        Route::get('/other-api', fn () => response()->json(['ok' => true]))
+            ->middleware('auth:api');
         Route::post('/oauth/register', OAuthDynamicClientRegistrationController::class)
             ->middleware(ConvertEmptyStringsToNull::class);
     }
@@ -204,12 +210,22 @@ final class OAuthResourceTokenBindingTest extends TestCase
             'code_challenge_method' => 'S256',
         ];
 
-        $this->actingAs($user)->get('/oauth/authorize?'.http_build_query($query))
-            ->assertStatus(400)
-            ->assertJsonPath('error', 'invalid_target');
-        $this->actingAs($user)->get('/oauth/authorize?'.http_build_query($query + ['resource' => 'https://other.example.test/mcp']))
-            ->assertStatus(400)
-            ->assertJsonPath('error', 'invalid_target');
+        $missingAuthorizationResource = $this->actingAs($user)
+            ->get('/oauth/authorize?'.http_build_query($query))
+            ->assertRedirect();
+        $this->assertStringContainsString(
+            'error=invalid_target',
+            (string) $missingAuthorizationResource->headers->get('Location'),
+        );
+        $wrongAuthorizationResource = $this->actingAs($user)
+            ->get('/oauth/authorize?'.http_build_query(
+                $query + ['resource' => 'https://other.example.test/mcp'],
+            ))
+            ->assertRedirect();
+        $this->assertStringContainsString(
+            'error=invalid_target',
+            (string) $wrongAuthorizationResource->headers->get('Location'),
+        );
 
         $auth = $this->actingAs($user)->get('/oauth/authorize?'.http_build_query($query + ['resource' => self::RESOURCE]));
         $authToken = (string) session('authToken');
@@ -276,6 +292,8 @@ final class OAuthResourceTokenBindingTest extends TestCase
         $serialized = (string) $token->json('access_token');
 
         $this->getJson('/mcp', ['Authorization' => 'Bearer '.$serialized])->assertOk();
+        Auth::forgetGuards();
+        $this->getJson('/other-api', ['Authorization' => 'Bearer '.$serialized])->assertUnauthorized();
 
         config(['bherila-auth.oauth_server.resource' => 'https://other.example.test/mcp']);
         Auth::forgetGuards();
@@ -363,6 +381,10 @@ final class OAuthResourceTokenBindingTest extends TestCase
         $this->assertNull($client->secret);
         $this->assertNotNull($client->dynamically_registered_at);
         $this->assertSame(['mcp:use'], $client->scopes);
+        $this->assertSame(
+            '["mcp:use"]',
+            DB::table($client->getTable())->where('id', $client->getKey())->value('scopes'),
+        );
         $this->assertFalse($client->firstParty());
         $this->assertFalse($client->skipsAuthorization($user, Passport::scopesFor(['mcp:use'])));
 
@@ -377,7 +399,7 @@ final class OAuthResourceTokenBindingTest extends TestCase
             'code_challenge_method' => 'S256',
         ]))->assertStatus(401)->assertJsonPath('error', 'invalid_client');
 
-        $this->actingAs($user)->get('/oauth/authorize?'.http_build_query([
+        $authorizationErrorWithoutIssuer = $this->actingAs($user)->get('/oauth/authorize?'.http_build_query([
             'response_type' => 'code',
             'client_id' => $client->getKey(),
             'redirect_uri' => $redirectUri,
@@ -385,7 +407,21 @@ final class OAuthResourceTokenBindingTest extends TestCase
             'resource' => self::RESOURCE,
             'code_challenge' => $challenge,
             'code_challenge_method' => 'S256',
-        ]))->assertStatus(400)->assertJsonPath('error', 'invalid_scope');
+            'state' => 'state-without-issuer',
+        ]));
+        $authorizationErrorWithoutIssuer->assertRedirect();
+        $this->assertStringContainsString(
+            'error=invalid_scope',
+            (string) $authorizationErrorWithoutIssuer->headers->get('Location'),
+        );
+        $this->assertStringContainsString(
+            'state=state-without-issuer',
+            (string) $authorizationErrorWithoutIssuer->headers->get('Location'),
+        );
+        $this->assertStringNotContainsString(
+            'iss=',
+            (string) $authorizationErrorWithoutIssuer->headers->get('Location'),
+        );
 
         config(['bherila-auth.oauth_server.authorization_response_issuer.enabled' => true]);
         $authorizationError = $this->actingAs($user)->get('/oauth/authorize?'.http_build_query([
@@ -444,6 +480,33 @@ final class OAuthResourceTokenBindingTest extends TestCase
         self::assertInstanceOf(RuntimeException::class, $failure);
         self::assertSame('Synthetic dynamic client metadata failure.', $failure->getMessage());
         self::assertSame($before, Passport::client()->newQuery()->count());
+    }
+
+    public function test_dcr_serializes_scopes_for_an_uncast_custom_column(): void
+    {
+        Schema::table('oauth_clients', static function (Blueprint $table): void {
+            $table->text('registered_scopes')->nullable();
+        });
+        config([
+            'bherila-auth.oauth_server.dynamic_clients.required_columns' => [
+                'dynamically_registered_at',
+                'registered_scopes',
+            ],
+            'bherila-auth.oauth_server.dynamic_clients.scopes_column' => 'registered_scopes',
+        ]);
+
+        $response = $this->postJson('/oauth/register', [
+            'client_name' => 'Uncast Scope Client',
+            'redirect_uris' => ['https://client.example.test/callback'],
+            'scope' => 'mcp:use',
+        ])->assertCreated();
+
+        self::assertSame(
+            '["mcp:use"]',
+            DB::table('oauth_clients')
+                ->where('id', $response->json('client_id'))
+                ->value('registered_scopes'),
+        );
     }
 
     public function test_hosted_public_registration_completes_the_resource_bound_authorization_flow(): void

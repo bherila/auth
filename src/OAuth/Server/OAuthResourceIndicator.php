@@ -9,6 +9,8 @@ final class OAuthResourceIndicator
 {
     public const REQUEST_ATTRIBUTE = 'bherila_auth_oauth_resource';
 
+    public const EXPECTED_RESOURCE_ATTRIBUTE = 'bherila_auth_expected_oauth_resource';
+
     /**
      * Return the issuer exactly as configured. The trailing slash is significant
      * for RFC 9207 and for authorization-server metadata consumers.
@@ -88,6 +90,22 @@ final class OAuthResourceIndicator
     public static function validatedFor(Request $request): ?string
     {
         $attribute = $request->attributes->get(self::REQUEST_ATTRIBUTE);
+
+        return is_string($attribute) ? self::canonicalize($attribute) : null;
+    }
+
+    /** Mark a protected request with the exact audience its route accepts. */
+    public static function expectConfiguredFor(Request $request): string
+    {
+        $resource = self::configuredCanonical();
+        $request->attributes->set(self::EXPECTED_RESOURCE_ATTRIBUTE, $resource);
+
+        return $resource;
+    }
+
+    public static function expectedFor(Request $request): ?string
+    {
+        $attribute = $request->attributes->get(self::EXPECTED_RESOURCE_ATTRIBUTE);
 
         return is_string($attribute) ? self::canonicalize($attribute) : null;
     }
