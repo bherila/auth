@@ -435,6 +435,31 @@ class OAuthServerHelpersTest extends TestCase
         );
     }
 
+    public function test_a_failed_authorization_request_preserves_an_existing_consent_resource_binding(): void
+    {
+        $state = app(OAuthAuthorizationStateStore::class);
+        session()->put('authToken', 'existing-consent-token');
+        $state->rememberResource('existing-consent-token', OAuthResourceIndicator::resource());
+
+        $request = Request::create('/oauth/authorize', 'GET', ['scope' => 'identity:read']);
+        $request->setRouteResolver(static function (): RoutingRoute {
+            return (new RoutingRoute('GET', '/oauth/authorize', fn () => 'next'))
+                ->name('passport.authorizations.authorize');
+        });
+
+        app(EnforceOAuthResourceIndicator::class)->handle(
+            $request,
+            static fn (): never => throw new HttpResponseException(
+                response()->json(['error' => 'invalid_request'], 400),
+            ),
+        );
+
+        self::assertSame(
+            OAuthResourceIndicator::resource(),
+            $state->resourceFor('existing-consent-token'),
+        );
+    }
+
     public function test_shared_consent_view_renders_identity_permissions_and_dynamic_redirect_warning(): void
     {
         $client = new class

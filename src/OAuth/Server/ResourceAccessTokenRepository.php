@@ -120,9 +120,10 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
         }
 
         $resourceColumn = $this->resourceColumn();
-        $storedValue = $this->hasColumn($model->getTable(), $resourceColumn)
-            ? $model->getAttribute($resourceColumn)
-            : null;
+        // The token row is already loaded. Reading a missing attribute yields
+        // null, which is the same fail-closed state as a missing binding, so the
+        // bearer hot path does not need a schema-catalog query on every request.
+        $storedValue = $model->getAttribute($resourceColumn);
         $storedResource = $storedValue === null ? null : OAuthResourceIndicator::canonicalize($storedValue);
         $scopes = OAuthResourceIndicator::scopeIdentifiers($model->getAttribute('scopes'));
         $bound = $storedValue !== null || OAuthResourceIndicator::scopesRequireResource($scopes);

@@ -85,9 +85,6 @@ final class EnforceOAuthResourceIndicator
             $response = $next($request);
         } catch (HttpResponseException $exception) {
             $currentAuthToken = $this->authorizationState->currentApprovalToken();
-            if ($previousAuthToken !== null) {
-                $this->authorizationState->forgetResource($previousAuthToken);
-            }
             if ($currentAuthToken !== null
                 && ($previousAuthToken === null || ! hash_equals($previousAuthToken, $currentAuthToken))) {
                 $this->authorizationState->forgetResource($currentAuthToken);

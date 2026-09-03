@@ -82,7 +82,7 @@ class AuthServiceProvider extends ServiceProvider
 
         // Testbench and applications with deferred configuration can apply the
         // opt-in setting after provider registration but before provider boot.
-        $this->registerOAuthServerBindings();
+        $this->registerOAuthServerBindings(preserveExisting: true);
         if ($this->oauthServerEnabled() && class_exists(Passport::class)) {
             Passport::useAccessTokenEntity(ResourceAccessToken::class);
             if (Passport::clientModel() === PassportClient::class) {
@@ -90,7 +90,8 @@ class AuthServiceProvider extends ServiceProvider
             }
         }
 
-        if (config('bherila-auth.oauth_server.authorization_response_issuer.enabled', false)) {
+        if ($this->oauthServerEnabled()
+            && config('bherila-auth.oauth_server.authorization_response_issuer.enabled', false)) {
             $this->app->booted(function (): void {
                 foreach ([
                     'passport.authorizations.authorize',
@@ -105,7 +106,7 @@ class AuthServiceProvider extends ServiceProvider
         }
     }
 
-    private function registerOAuthServerBindings(): void
+    private function registerOAuthServerBindings(bool $preserveExisting = false): void
     {
         if (! $this->oauthServerEnabled() || ! class_exists(PassportAccessTokenRepository::class)) {
             return;
@@ -114,9 +115,15 @@ class AuthServiceProvider extends ServiceProvider
         // Passport resolves these concrete bridge classes while constructing its
         // authorization/resource servers. Applications may still replace any of
         // the bindings in their own provider when they need additional bookkeeping.
-        $this->app->bind(PassportAccessTokenRepository::class, ResourceAccessTokenRepository::class);
-        $this->app->bind(PassportAuthCodeRepository::class, ResourceAuthCodeRepository::class);
-        $this->app->bind(PassportRefreshTokenRepository::class, ResourceRefreshTokenRepository::class);
+        foreach ([
+            PassportAccessTokenRepository::class => ResourceAccessTokenRepository::class,
+            PassportAuthCodeRepository::class => ResourceAuthCodeRepository::class,
+            PassportRefreshTokenRepository::class => ResourceRefreshTokenRepository::class,
+        ] as $abstract => $implementation) {
+            if (! $preserveExisting || ! $this->app->bound($abstract)) {
+                $this->app->bind($abstract, $implementation);
+            }
+        }
     }
 
     private function oauthServerEnabled(): bool

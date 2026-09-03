@@ -4,6 +4,7 @@ namespace BWH\Auth\Tests\Feature;
 
 use BWH\Auth\AuthServiceProvider;
 use BWH\Auth\Http\Controllers\OAuthDynamicClientRegistrationController;
+use BWH\Auth\Http\Middleware\AppendOAuthAuthorizationResponseIssuer;
 use BWH\Auth\Http\Middleware\EnforceOAuthPkce;
 use BWH\Auth\Http\Middleware\EnforceOAuthResourceIndicator;
 use BWH\Auth\OAuth\Server\OAuthResourceIndicator;
@@ -16,6 +17,7 @@ use BWH\Auth\Tests\Fixtures\FailingDynamicRegistrationClient;
 use BWH\Auth\Tests\Fixtures\User;
 use BWH\Auth\Tests\TestCase;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Laravel\Passport\Bridge\AccessToken;
 use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
@@ -293,6 +295,44 @@ final class OAuthResourceTokenBindingTest extends TestCase
         Passport::token()->newQuery()->whereKey($tokenId)->update(['revoked' => true]);
 
         $this->getJson('/mcp', ['Authorization' => 'Bearer '.$serialized])->assertUnauthorized();
+    }
+
+    public function test_bearer_validation_does_not_query_the_schema_catalog(): void
+    {
+        [$user, $client] = $this->userAndPublicClient(['mcp:use']);
+        $token = $this->issueToken($user, $client);
+
+        DB::connection()->flushQueryLog();
+        DB::connection()->enableQueryLog();
+        $this->getJson('/mcp', [
+            'Authorization' => 'Bearer '.(string) $token->json('access_token'),
+        ])->assertOk();
+        $queries = DB::connection()->getQueryLog();
+        DB::connection()->disableQueryLog();
+
+        $schemaQueries = array_filter($queries, static function (array $query): bool {
+            $sql = strtolower((string) ($query['query'] ?? ''));
+
+            return str_contains($sql, 'pragma_table')
+                || str_contains($sql, 'information_schema')
+                || str_contains($sql, 'pg_catalog');
+        });
+
+        self::assertSame([], array_values($schemaQueries));
+    }
+
+    public function test_disabling_the_oauth_server_also_disables_authorization_response_issuer_middleware(): void
+    {
+        config([
+            'bherila-auth.oauth_server.enabled' => false,
+            'bherila-auth.oauth_server.authorization_response_issuer.enabled' => true,
+        ]);
+
+        (new AuthServiceProvider(app()))->boot();
+
+        $route = Route::getRoutes()->getByName('passport.authorizations.authorize');
+        self::assertNotNull($route);
+        self::assertNotContains(AppendOAuthAuthorizationResponseIssuer::class, $route->gatherMiddleware());
     }
 
     public function test_dcr_creates_a_public_client_without_a_secret_and_preserves_registered_scope_limits(): void
