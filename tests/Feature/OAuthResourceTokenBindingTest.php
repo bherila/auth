@@ -373,6 +373,39 @@ final class OAuthResourceTokenBindingTest extends TestCase
         ])->assertNotFound();
     }
 
+    public function test_hosted_public_registration_completes_the_resource_bound_authorization_flow(): void
+    {
+        $redirectUri = 'https://chatgpt.com/connector_platform_oauth_redirect';
+        $user = User::query()->create([
+            'name' => 'Hosted Client User',
+            'email' => 'hosted-client@example.test',
+            'password' => 'not-used',
+        ]);
+        $response = $this->postJson('/oauth/register', [
+            'client_name' => 'ChatGPT',
+            'redirect_uris' => [$redirectUri],
+            'grant_types' => ['authorization_code', 'refresh_token'],
+            'response_types' => ['code'],
+            'token_endpoint_auth_method' => 'none',
+            'application_type' => 'web',
+            'scope' => 'mcp:use',
+        ]);
+        $response->assertCreated()
+            ->assertJsonPath('client_name', 'ChatGPT')
+            ->assertJsonPath('application_type', 'web')
+            ->assertJsonPath('token_endpoint_auth_method', 'none')
+            ->assertJsonMissingPath('client_secret');
+
+        $client = Passport::client()->newQuery()->findOrFail($response->json('client_id'));
+        $this->assertFalse($client->firstParty());
+
+        $token = $this->issueToken($user, $client, $redirectUri)->assertOk();
+        $claims = OAuthResourceIndicator::tokenClaims((string) $token->json('access_token'));
+        $this->assertSame(self::ISSUER, $claims['iss'] ?? null);
+        $this->assertSame(self::RESOURCE, $claims['resource'] ?? null);
+        $this->assertContains(self::RESOURCE, $claims['aud'] ?? []);
+    }
+
     /** @return array{User, Client} */
     private function userAndPublicClient(array $scopes): array
     {
