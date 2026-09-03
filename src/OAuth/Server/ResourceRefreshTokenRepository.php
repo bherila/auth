@@ -3,15 +3,61 @@
 namespace BWH\Auth\OAuth\Server;
 
 use Illuminate\Http\Request;
+use Laravel\Passport\Events\RefreshTokenCreated;
 use Laravel\Passport\Passport;
 use Laravel\Passport\Bridge\RefreshTokenRepository as PassportRefreshTokenRepository;
+use League\OAuth2\Server\Entities\RefreshTokenEntityInterface;
 use League\OAuth2\Server\Repositories\RefreshTokenRepositoryInterface;
+use RuntimeException;
 
 /**
  * Keeps refresh-token exchanges on the resource selected for the original grant.
  */
 final class ResourceRefreshTokenRepository extends PassportRefreshTokenRepository implements RefreshTokenRepositoryInterface
 {
+    public function persistNewRefreshToken(RefreshTokenEntityInterface $refreshTokenEntity): void
+    {
+        $accessToken = $refreshTokenEntity->getAccessToken();
+        $request = $this->request();
+        $resource = $accessToken instanceof ResourceAccessToken
+            ? $accessToken->getResource()
+            : ($request === null ? null : OAuthResourceIndicator::validatedFor($request));
+
+        if ($resource !== null) {
+            $resource = OAuthResourceIndicator::canonicalize($resource);
+            if ($resource === null || $resource !== OAuthResourceIndicator::configuredCanonical()) {
+                throw new RuntimeException('The refresh-token resource is not configured.');
+            }
+        }
+        if (OAuthResourceIndicator::scopesRequireResource($accessToken->getScopes()) && $resource === null) {
+            throw new RuntimeException('A protected resource is required for the refresh token.');
+        }
+
+        $model = Passport::refreshToken();
+        $resourceColumn = $this->resourceColumn();
+        $hasResourceColumn = $model->getConnection()->getSchemaBuilder()->hasColumn(
+            $model->getTable(),
+            $resourceColumn,
+        );
+        if ($resource !== null && ! $hasResourceColumn) {
+            throw new RuntimeException("The {$model->getTable()}.{$resourceColumn} column is required.");
+        }
+
+        $attributes = [
+            'id' => $id = $refreshTokenEntity->getIdentifier(),
+            'access_token_id' => $accessTokenId = $accessToken->getIdentifier(),
+            'revoked' => false,
+            'expires_at' => $refreshTokenEntity->getExpiryDateTime(),
+        ];
+        if ($hasResourceColumn) {
+            $attributes[$resourceColumn] = $resource;
+        }
+
+        $model->forceFill($attributes)->save();
+
+        $this->events->dispatch(new RefreshTokenCreated($id, $accessTokenId));
+    }
+
     public function isRefreshTokenRevoked(string $tokenId): bool
     {
         if (parent::isRefreshTokenRevoked($tokenId)) {
@@ -19,25 +65,14 @@ final class ResourceRefreshTokenRepository extends PassportRefreshTokenRepositor
         }
 
         $refreshToken = Passport::refreshToken()->newQuery()->whereKey($tokenId)->first();
-        $accessTokenId = $refreshToken?->getAttribute('access_token_id');
-        if (! is_string($accessTokenId) || $accessTokenId === '') {
-            return true;
-        }
-
-        $accessToken = Passport::token()->newQuery()->whereKey($accessTokenId)->first();
-        if ($accessToken === null) {
+        if ($refreshToken === null) {
             return true;
         }
 
         $resourceColumn = $this->resourceColumn();
-        $hasResourceColumn = Passport::token()->getConnection()->getSchemaBuilder()->hasColumn(
-            $accessToken->getTable(),
-            $resourceColumn,
-        );
-        $storedValue = $hasResourceColumn ? $accessToken->getAttribute($resourceColumn) : null;
+        $storedValue = $refreshToken->getAttribute($resourceColumn);
         $storedResource = $storedValue === null ? null : OAuthResourceIndicator::canonicalize($storedValue);
-        $scopes = OAuthResourceIndicator::scopeIdentifiers($accessToken->getAttribute('scopes'));
-        $bound = $storedValue !== null || OAuthResourceIndicator::scopesRequireResource($scopes);
+        $bound = $storedValue !== null;
         $request = $this->request();
         $hasRequestedResource = $request?->exists('resource') ?? false;
         $requestedResource = $request === null ? null : OAuthResourceIndicator::requestResource($request);
@@ -64,7 +99,7 @@ final class ResourceRefreshTokenRepository extends PassportRefreshTokenRepositor
 
     private function resourceColumn(): string
     {
-        $column = config('bherila-auth.oauth_server.resource_column', 'resource_uri');
+        $column = config('bherila-auth.oauth_server.refresh_token_resource_column', 'resource_uri');
 
         return is_string($column) && $column !== '' ? $column : 'resource_uri';
     }

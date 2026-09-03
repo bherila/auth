@@ -25,6 +25,8 @@ the first entry here is in the git history.
   limits; loopback redirects remain native-only.
 - Added a safe, idempotent Passport metadata/resource-column migration and documented
   consumer migration steps.
+- Refresh tokens now persist their resource binding directly, so a valid longer-lived
+  refresh token remains usable after Passport purges its expired access-token row.
 - Metadata controller routes now fail closed with a non-cacheable 404 while the opt-in
   OAuth server is disabled, so accidentally routed discovery endpoints cannot advertise
   an inactive server.

@@ -28,6 +28,9 @@ return new class extends Migration
         $this->addColumn('oauth_access_tokens', 'resource_uri', function (Blueprint $table): void {
             $table->text('resource_uri')->nullable();
         });
+        $this->addColumn('oauth_refresh_tokens', 'resource_uri', function (Blueprint $table): void {
+            $table->text('resource_uri')->nullable();
+        });
     }
 
     /**

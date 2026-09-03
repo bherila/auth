@@ -52,6 +52,7 @@ return [
         'protected_resource_metadata_url' => null,
         'auth_code_resource_column' => 'resource_uri',
         'resource_column' => 'resource_uri',
+        'refresh_token_resource_column' => 'resource_uri',
         'authorization_response_issuer' => [
             // RFC 9207 is opt-in because the authorization response middleware must
             // be installed on every authorization/consent route to make this true.

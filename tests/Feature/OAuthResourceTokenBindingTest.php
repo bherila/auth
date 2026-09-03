@@ -172,6 +172,10 @@ final class OAuthResourceTokenBindingTest extends TestCase
         $this->assertSame(self::RESOURCE, $claims['resource'] ?? null);
         $storedToken = Passport::token()->newQuery()->where('client_id', $client->getKey())->firstOrFail();
         $this->assertSame(self::RESOURCE, $storedToken->resource_uri);
+        $storedRefreshToken = Passport::refreshToken()->newQuery()
+            ->where('access_token_id', $claims['jti'])
+            ->firstOrFail();
+        $this->assertSame(self::RESOURCE, $storedRefreshToken->resource_uri);
 
         $this->getJson('/mcp', ['Authorization' => 'Bearer '.$accessToken])->assertOk();
 
@@ -193,6 +197,50 @@ final class OAuthResourceTokenBindingTest extends TestCase
         $this->assertSame(
             self::RESOURCE,
             Passport::token()->newQuery()->whereKey($refreshedClaims['jti'])->value('resource_uri'),
+        );
+        $this->assertSame(
+            self::RESOURCE,
+            Passport::refreshToken()->newQuery()
+                ->where('access_token_id', $refreshedClaims['jti'])
+                ->value('resource_uri'),
+        );
+    }
+
+    public function test_refresh_resource_survives_expired_access_token_row_purge(): void
+    {
+        [$user, $client] = $this->userAndPublicClient(['mcp:use']);
+        $token = $this->issueToken($user, $client);
+        $refreshToken = (string) $token->json('refresh_token');
+        $claims = OAuthResourceIndicator::tokenClaims((string) $token->json('access_token'));
+        $accessTokenId = (string) ($claims['jti'] ?? '');
+
+        $this->assertSame(
+            self::RESOURCE,
+            Passport::refreshToken()->newQuery()
+                ->where('access_token_id', $accessTokenId)
+                ->value('resource_uri'),
+        );
+
+        // Passport may purge an expired access-token row while its longer-lived
+        // refresh token is still valid. The refresh credential owns its audience.
+        Passport::token()->newQuery()->whereKey($accessTokenId)->delete();
+        $this->assertDatabaseMissing('oauth_access_tokens', ['id' => $accessTokenId]);
+
+        $refreshed = $this->postJson('/oauth/token', [
+            'grant_type' => 'refresh_token',
+            'client_id' => $client->getKey(),
+            'refresh_token' => $refreshToken,
+            'resource' => self::RESOURCE,
+        ])->assertOk();
+
+        $refreshedClaims = OAuthResourceIndicator::tokenClaims((string) $refreshed->json('access_token'));
+        $this->assertSame(self::RESOURCE, $refreshedClaims['resource'] ?? null);
+        $this->assertContains(self::RESOURCE, $refreshedClaims['aud'] ?? []);
+        $this->assertSame(
+            self::RESOURCE,
+            Passport::refreshToken()->newQuery()
+                ->where('access_token_id', $refreshedClaims['jti'])
+                ->value('resource_uri'),
         );
     }
 

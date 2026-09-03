@@ -338,9 +338,9 @@ server origin; its path and trailing slash are significant. The application decl
 that resource. Set `protected_resource_scopes` when this protected resource should
 advertise only a subset of the server catalog. The package carries the validated value through authorization state,
 consent, the authorization-code record, token exchange, refresh-token exchange, the
-signed JWT `aud` (and `resource`) claims, and the access-token record. Its Passport
-repository binding also checks the signed audience and issuer on every bearer request,
-so a token issued for one configured resource cannot be replayed at another one.
+signed JWT `aud` (and `resource`) claims, and the access- and refresh-token records. Its
+Passport repository binding also checks the signed audience and issuer on every bearer
+request, so a token issued for one configured resource cannot be replayed at another one.
 
 Authorization resource state spans the authorization, login, and consent requests.
 Configure Laravel's default cache repository as a persistent store shared by every
@@ -378,11 +378,14 @@ the expected audience, preventing an MCP token from being replayed at a differen
 API in the same application.
 
 The package migration `2026_09_02_000000_add_oauth_server_metadata` adds the reusable
-Passport client registration fields and resource-binding fields when they are absent.
+Passport client registration fields and authorization-code, access-token, and refresh-token
+resource-binding fields when they are absent. Refresh tokens retain their resource directly,
+so Passport may purge an expired access-token row without invalidating a longer-lived refresh.
 Publish and run migrations before enabling the server. If an application uses custom
-column names or a custom Passport client model, configure the names and ensure the
-scopes attribute is stored as a JSON/string list the middleware can normalize. A
-missing resource column fails closed before a bound credential can be issued. Enabling
+column names or a custom Passport client model, configure `auth_code_resource_column`,
+`resource_column`, and `refresh_token_resource_column`, and ensure the scopes attribute
+is stored as a JSON/string list the middleware can normalize. A missing resource column
+fails closed before a bound credential can be issued. Enabling
 the resource-aware Passport binding also switches new access tokens to the package
 issuer/audience format; legacy Passport JWTs without the package `iss` claim are
 rejected by the resource repository. Revoke or allow existing access tokens to expire,

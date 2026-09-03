@@ -80,6 +80,7 @@ class ConfigMergeTest extends TestCase
         $this->assertSame('bherila_auth_2fa_user_id', config('bherila-auth.two_factor.session_user_key'));
         $this->assertSame('preferred', config('bherila-auth.passkeys.user_verification'));
         $this->assertNull(config('bherila-auth.oauth_server.resource_required_scope'));
+        $this->assertSame('resource_uri', config('bherila-auth.oauth_server.refresh_token_resource_column'));
     }
 
     public function test_nested_sections_merge_key_by_key(): void
