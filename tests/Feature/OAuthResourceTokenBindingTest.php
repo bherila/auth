@@ -13,6 +13,8 @@ use BWH\Auth\OAuth\Server\ResourceAccessTokenRepository;
 use BWH\Auth\OAuth\Server\ResourceAuthCodeRepository;
 use BWH\Auth\OAuth\Server\ResourceClient;
 use BWH\Auth\OAuth\Server\ResourceRefreshTokenRepository;
+use BWH\Auth\Tests\Fixtures\ArrayScopesAuthCode;
+use BWH\Auth\Tests\Fixtures\CollectionScopesClient;
 use BWH\Auth\Tests\Fixtures\FailingDynamicRegistrationClient;
 use BWH\Auth\Tests\Fixtures\User;
 use BWH\Auth\Tests\TestCase;
@@ -22,7 +24,9 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Collection;
 use Illuminate\Testing\TestResponse;
+use Laravel\Passport\AuthCode;
 use Laravel\Passport\Bridge\AccessToken;
 use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
 use Laravel\Passport\Bridge\AuthCodeRepository as PassportAuthCodeRepository;
@@ -121,6 +125,7 @@ final class OAuthResourceTokenBindingTest extends TestCase
     protected function tearDown(): void
     {
         Passport::useAccessTokenEntity(AccessToken::class);
+        Passport::useAuthCodeModel(AuthCode::class);
         Passport::useClientModel(Client::class);
 
         parent::tearDown();
@@ -405,6 +410,103 @@ final class OAuthResourceTokenBindingTest extends TestCase
         $route = Route::getRoutes()->getByName('passport.authorizations.authorize');
         self::assertNotNull($route);
         self::assertNotContains(AppendOAuthAuthorizationResponseIssuer::class, $route->gatherMiddleware());
+    }
+
+    public function test_passport_generated_authorization_errors_are_not_cacheable(): void
+    {
+        [$user, $client] = $this->userAndPublicClient(['mcp:use']);
+
+        $response = $this->actingAs($user)->get('/oauth/authorize?'.http_build_query([
+            'response_type' => 'token',
+            'client_id' => $client->getKey(),
+            'redirect_uri' => 'http://127.0.0.1:1455/callback',
+            'scope' => 'mcp:use',
+            'resource' => self::RESOURCE,
+            'code_challenge' => str_repeat('c', 43),
+            'code_challenge_method' => 'S256',
+            'state' => 'downstream-error-state',
+        ]));
+
+        $response->assertBadRequest()
+            ->assertJsonPath('error', 'unsupported_grant_type')
+            ->assertHeader('Pragma', 'no-cache');
+        self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+    }
+
+    public function test_prevalidation_errors_use_a_sole_active_redirect_but_not_a_revoked_client(): void
+    {
+        [$user, $client] = $this->userAndPublicClient(['mcp:use']);
+        $query = [
+            'response_type' => 'code',
+            'client_id' => $client->getKey(),
+            'scope' => 'identity:read',
+            'resource' => self::RESOURCE,
+            'code_challenge' => str_repeat('c', 43),
+            'code_challenge_method' => 'S256',
+            'state' => 'sole-redirect-state',
+        ];
+
+        $active = $this->actingAs($user)->get('/oauth/authorize?'.http_build_query($query));
+        $active->assertRedirect();
+        self::assertStringStartsWith(
+            'http://127.0.0.1:1455/callback?',
+            (string) $active->headers->get('Location'),
+        );
+        self::assertStringContainsString('error=invalid_scope', (string) $active->headers->get('Location'));
+        self::assertStringContainsString('state=sole-redirect-state', (string) $active->headers->get('Location'));
+
+        $client->forceFill(['revoked' => true])->save();
+        $revoked = $this->actingAs($user)->get('/oauth/authorize?'.http_build_query($query));
+        $revoked->assertBadRequest()
+            ->assertJsonPath('error', 'invalid_scope')
+            ->assertHeaderMissing('Location');
+    }
+
+    public function test_collection_cast_registered_scopes_are_enforced_as_a_scope_list(): void
+    {
+        Schema::table('oauth_clients', static function (Blueprint $table): void {
+            $table->json('registered_scopes')->nullable();
+        });
+        config([
+            'bherila-auth.oauth_server.dynamic_clients.required_columns' => [
+                'dynamically_registered_at',
+                'registered_scopes',
+            ],
+            'bherila-auth.oauth_server.dynamic_clients.scopes_column' => 'registered_scopes',
+        ]);
+        Passport::useClientModel(CollectionScopesClient::class);
+        $registration = $this->postJson('/oauth/register', [
+            'client_name' => 'Collection Scope Client',
+            'redirect_uris' => ['https://client.example.test/callback'],
+            'scope' => 'mcp:use',
+        ])->assertCreated();
+        $client = Passport::client()->newQuery()->findOrFail($registration->json('client_id'));
+        $user = User::query()->create([
+            'name' => 'Collection Scope User',
+            'email' => 'collection-scope@example.test',
+            'password' => 'not-used',
+        ]);
+
+        self::assertInstanceOf(Collection::class, $client->getAttribute('registered_scopes'));
+        self::assertSame(['mcp:use'], $client->getAttribute('registered_scopes')->all());
+        $this->issueToken($user, $client, 'https://client.example.test/callback')->assertOk();
+    }
+
+    public function test_array_cast_auth_code_scopes_are_not_double_encoded(): void
+    {
+        Passport::useAuthCodeModel(ArrayScopesAuthCode::class);
+        [$user, $client] = $this->userAndPublicClient(['mcp:use']);
+
+        $this->issueToken($user, $client)->assertOk();
+
+        $authCode = Passport::authCode()->newQuery()
+            ->where('client_id', $client->getKey())
+            ->firstOrFail();
+        self::assertSame(['mcp:use'], $authCode->getAttribute('scopes'));
+        self::assertSame(
+            '["mcp:use"]',
+            DB::table($authCode->getTable())->where('id', $authCode->getKey())->value('scopes'),
+        );
     }
 
     public function test_dcr_creates_a_public_client_without_a_secret_and_preserves_registered_scope_limits(): void

@@ -470,6 +470,11 @@ class OAuthServerHelpersTest extends TestCase
             'iss=https%3A%2F%2Fauth.example.test%2Ftenant%2F',
             (string) $decoratedException->headers->get('Location'),
         );
+        $this->assertStringContainsString(
+            'no-store',
+            (string) $decoratedException->headers->get('Cache-Control'),
+        );
+        $this->assertSame('no-cache', $decoratedException->headers->get('Pragma'));
     }
 
     public function test_a_failed_authorization_request_preserves_an_existing_consent_resource_binding(): void

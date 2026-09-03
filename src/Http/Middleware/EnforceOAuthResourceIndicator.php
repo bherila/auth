@@ -10,6 +10,7 @@ use Closure;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Laravel\Passport\Passport;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -90,7 +91,9 @@ final class EnforceOAuthResourceIndicator
                 $this->authorizationState->forgetResource($currentAuthToken);
             }
 
-            return OAuthAuthorizationResponseIssuer::decorate($exception->getResponse());
+            return OAuthAuthorizationResponseIssuer::decorate(
+                $this->noStore($exception->getResponse()),
+            );
         }
         $authToken = $this->authorizationState->currentApprovalToken();
         if (is_string($authToken)
@@ -106,7 +109,7 @@ final class EnforceOAuthResourceIndicator
             $this->authorizationState->forgetResource($previousAuthToken);
         }
 
-        return OAuthAuthorizationResponseIssuer::decorate($response);
+        return OAuthAuthorizationResponseIssuer::decorate($this->noStore($response));
     }
 
     private function consentSubmission(Request $request, Closure $next): Response
@@ -118,9 +121,13 @@ final class EnforceOAuthResourceIndicator
         }
 
         try {
-            return OAuthAuthorizationResponseIssuer::decorate($next($request));
+            return OAuthAuthorizationResponseIssuer::decorate(
+                $this->noStore($next($request)),
+            );
         } catch (HttpResponseException $exception) {
-            return OAuthAuthorizationResponseIssuer::decorate($exception->getResponse());
+            return OAuthAuthorizationResponseIssuer::decorate(
+                $this->noStore($exception->getResponse()),
+            );
         } finally {
             if (is_string($authToken)
                 && $this->authorizationState->currentApprovalToken() !== $authToken) {
@@ -160,6 +167,9 @@ final class EnforceOAuthResourceIndicator
             $registeredScopes = is_array($decoded)
                 ? $decoded
                 : DynamicClientRegistrationValidator::parseScopes($registeredScopes);
+        }
+        if ($registeredScopes instanceof Collection) {
+            $registeredScopes = $registeredScopes->all();
         }
         if (! is_array($registeredScopes)) {
             return false;
@@ -239,9 +249,9 @@ final class EnforceOAuthResourceIndicator
         }
 
         $separator = str_contains($redirectUri, '?') ? '&' : '?';
-        $response = redirect()->away($redirectUri.$separator.http_build_query($parameters));
-        $response->headers->set('Cache-Control', 'no-store');
-        $response->headers->set('Pragma', 'no-cache');
+        $response = $this->noStore(
+            redirect()->away($redirectUri.$separator.http_build_query($parameters)),
+        );
 
         return OAuthAuthorizationResponseIssuer::decorate($response);
     }
@@ -260,26 +270,13 @@ final class EnforceOAuthResourceIndicator
     private function validatedRedirectUri(Request $request): ?string
     {
         $clientId = $request->query('client_id');
-        $redirectUri = $request->query('redirect_uri');
         if (! is_string($clientId)
-            || $clientId === ''
-            || ! is_string($redirectUri)
-            || $redirectUri === ''
-            || strlen($redirectUri) > 2048
-            || preg_match('/[\x00-\x1F\x7F]/', $redirectUri) === 1) {
-            return null;
-        }
-        try {
-            $redirectParts = parse_url($redirectUri);
-        } catch (\ValueError) {
-            return null;
-        }
-        if (! is_array($redirectParts) || isset($redirectParts['fragment'])) {
+            || $clientId === '') {
             return null;
         }
 
         $client = Passport::client()->newQuery()->find($clientId);
-        if ($client === null) {
+        if ($client === null || (bool) $client->getAttribute('revoked')) {
             return null;
         }
 
@@ -291,6 +288,25 @@ final class EnforceOAuthResourceIndicator
         if (! is_array($registeredUris)) {
             return null;
         }
+        $registeredUris = array_values(array_filter(
+            $registeredUris,
+            static fn (mixed $uri): bool => is_string($uri) && $uri !== '',
+        ));
+
+        if ($request->query->has('redirect_uri')) {
+            $redirectUri = $request->query('redirect_uri');
+            if (! is_string($redirectUri) || ! $this->safeRedirectUri($redirectUri)) {
+                return null;
+            }
+        } else {
+            if (count($registeredUris) !== 1) {
+                return null;
+            }
+            $redirectUri = $registeredUris[0];
+            if (! $this->safeRedirectUri($redirectUri)) {
+                return null;
+            }
+        }
 
         foreach ($registeredUris as $registeredUri) {
             if ($registeredUri === $redirectUri) {
@@ -299,5 +315,29 @@ final class EnforceOAuthResourceIndicator
         }
 
         return null;
+    }
+
+    private function safeRedirectUri(string $redirectUri): bool
+    {
+        if ($redirectUri === ''
+            || strlen($redirectUri) > 2048
+            || preg_match('/[\x00-\x1F\x7F]/', $redirectUri) === 1) {
+            return false;
+        }
+        try {
+            $parts = parse_url($redirectUri);
+        } catch (\ValueError) {
+            return false;
+        }
+
+        return is_array($parts) && ! isset($parts['fragment']);
+    }
+
+    private function noStore(Response $response): Response
+    {
+        $response->headers->set('Cache-Control', 'no-store');
+        $response->headers->set('Pragma', 'no-cache');
+
+        return $response;
     }
 }

@@ -384,8 +384,10 @@ so Passport may purge an expired access-token row without invalidating a longer-
 Publish and run migrations before enabling the server. If an application uses custom
 column names or a custom Passport client model, configure `auth_code_resource_column`,
 `resource_column`, and `refresh_token_resource_column`, and ensure the scopes attribute
-is stored as a JSON/string list the middleware can normalize. A missing resource column
-fails closed before a bound credential can be issued. Enabling
+is stored as an array/collection cast or JSON/string list the middleware can normalize.
+Auth-code scope persistence likewise honors array, JSON, and collection casts rather than
+double-encoding them. A missing resource column fails closed before a bound credential
+can be issued. Enabling
 the resource-aware Passport binding also switches new access tokens to the package
 issuer/audience format; legacy Passport JWTs without the package `iss` claim are
 rejected by the resource repository. Revoke or allow existing access tokens to expire,
@@ -406,6 +408,11 @@ falling back to those defaults.
 Registered-scope enforcement is always on for dynamic clients; the legacy
 `enforce_registered_scopes` setting is retained only so published configs remain readable.
 Dynamic registration does not grant consent or bypass the application policy.
+
+Authorization and consent responses are non-cacheable. Package pre-validation redirects
+errors only to an active client's exact registered callback; when `redirect_uri` is
+omitted, the sole registered callback is used, while ambiguous, malformed, unknown, or
+revoked-client destinations receive a local error instead.
 
 RFC 9207 issuer identification is disabled by default. If enabled, install the issuer
 middleware on every Passport authorization/consent route; otherwise leave the metadata

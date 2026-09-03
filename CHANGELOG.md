@@ -49,6 +49,11 @@ the first entry here is in the git history.
 - Authorization resource state requires Laravel's default cache to persist across
   requests and be shared by every authorization-server node; the request-local `array`
   store is unsupported for this flow and causes issuance to fail closed.
+- Authorization and consent responses now carry `no-store`/`no-cache`; pre-validation
+  errors redirect only to an active client's exact registered callback, including the
+  sole registered callback when the optional `redirect_uri` is omitted.
+- Registered scope ceilings accept supported array, JSON, and collection casts, and
+  auth-code scope persistence avoids double-encoding cast model attributes.
 
 ### Deferred
 

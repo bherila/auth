@@ -34,6 +34,7 @@ final class ResourceAuthCodeRepository extends PassportAuthCodeRepository implem
             throw new RuntimeException('The authorization-code resource is not configured.');
         }
         $scopes = $authCodeEntity->getScopes();
+        $scopeIdentifiers = OAuthResourceIndicator::scopeIdentifiers($scopes);
 
         if (OAuthResourceIndicator::scopesRequireResource($scopes) && $resource === null) {
             throw new RuntimeException('A protected resource is required for the requested scope.');
@@ -46,7 +47,9 @@ final class ResourceAuthCodeRepository extends PassportAuthCodeRepository implem
             'id' => $authCodeEntity->getIdentifier(),
             'user_id' => $authCodeEntity->getUserIdentifier(),
             'client_id' => $authCodeEntity->getClient()->getIdentifier(),
-            'scopes' => json_encode($scopes, JSON_THROW_ON_ERROR),
+            'scopes' => $model->hasCast('scopes', ['array', 'json', 'collection'])
+                ? $scopeIdentifiers
+                : json_encode($scopeIdentifiers, JSON_THROW_ON_ERROR),
             'revoked' => false,
             'expires_at' => $authCodeEntity->getExpiryDateTime(),
         ];
