@@ -382,15 +382,7 @@ final class OAuthResourceTokenBindingTest extends TestCase
         $serialized = (string) $token->json('access_token');
         $tokenId = (string) (OAuthResourceIndicator::tokenClaims($serialized)['jti'] ?? '');
 
-        config(['bherila-auth.oauth_server.enabled' => false]);
-        app()->forgetInstance(PassportAccessTokenRepository::class);
-        app()->bind(
-            PassportAccessTokenRepository::class,
-            fn (): PassportAccessTokenRepository => new PassportAccessTokenRepository(app('events')),
-        );
-        (new AuthServiceProvider(app()))->register();
-
-        $repository = app(PassportAccessTokenRepository::class);
+        $repository = $this->disabledAccessTokenRepository();
         self::assertInstanceOf(ResourceAccessTokenRepository::class, $repository);
         $originalRequest = app('request');
 
@@ -403,7 +395,54 @@ final class OAuthResourceTokenBindingTest extends TestCase
             $other = Request::create('/other-api', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$serialized]);
             app()->instance('request', $other);
             self::assertTrue($repository->isAccessTokenRevoked($tokenId));
+
+            Passport::token()->newQuery()->findOrFail($tokenId)->forceFill([
+                'resource_uri' => null,
+                'scopes' => ['identity:read'],
+            ])->save();
+            app()->instance('request', $other);
+            self::assertTrue($repository->isAccessTokenRevoked($tokenId));
         } finally {
+            app()->instance('request', $originalRequest);
+        }
+    }
+
+    public function test_disabled_issuance_delegates_only_unbound_tokens_on_unmarked_routes(): void
+    {
+        [$user, $client] = $this->userAndPublicClient(['identity:read']);
+        Passport::token()->forceFill([
+            'id' => 'legacy-unbound-token-id',
+            'user_id' => $user->getKey(),
+            'client_id' => $client->getKey(),
+            'scopes' => ['identity:read'],
+            'revoked' => false,
+            'expires_at' => now()->addHour(),
+            'resource_uri' => null,
+        ])->save();
+        $repository = $this->disabledAccessTokenRepository();
+        $originalRequest = app('request');
+
+        try {
+            $expected = Request::create('/mcp', server: ['HTTP_AUTHORIZATION' => 'Bearer legacy-unbound-token']);
+            OAuthResourceIndicator::expectConfiguredFor($expected);
+            app()->instance('request', $expected);
+            self::assertTrue($repository->isAccessTokenRevoked('legacy-unbound-token-id'));
+
+            $other = Request::create('/other-api', server: ['HTTP_AUTHORIZATION' => 'Bearer legacy-unbound-token']);
+            app()->instance('request', $other);
+            DB::connection()->flushQueryLog();
+            DB::connection()->enableQueryLog();
+            self::assertFalse($repository->isAccessTokenRevoked('legacy-unbound-token-id'));
+            $queries = DB::connection()->getQueryLog();
+            DB::connection()->disableQueryLog();
+
+            $tokenQueries = array_filter($queries, static fn (array $query): bool => str_contains(
+                strtolower((string) ($query['query'] ?? '')),
+                'oauth_access_tokens',
+            ));
+            self::assertCount(1, $tokenQueries);
+        } finally {
+            DB::connection()->disableQueryLog();
             app()->instance('request', $originalRequest);
         }
     }
@@ -795,6 +834,19 @@ final class OAuthResourceTokenBindingTest extends TestCase
             'code_verifier' => $verifier,
             'resource' => self::RESOURCE,
         ])->assertOk();
+    }
+
+    private function disabledAccessTokenRepository(): PassportAccessTokenRepository
+    {
+        config(['bherila-auth.oauth_server.enabled' => false]);
+        app()->forgetInstance(PassportAccessTokenRepository::class);
+        app()->bind(
+            PassportAccessTokenRepository::class,
+            fn (): PassportAccessTokenRepository => new PassportAccessTokenRepository(app('events')),
+        );
+        (new AuthServiceProvider(app()))->register();
+
+        return app(PassportAccessTokenRepository::class);
     }
 
     /** @return array{string, string} */

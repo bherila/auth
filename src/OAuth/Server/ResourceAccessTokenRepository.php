@@ -142,8 +142,24 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
         $serializedToken = $request?->bearerToken();
         $expectedResource = $request === null ? null : OAuthResourceIndicator::expectedFor($request);
 
-        if (! $bound && ! $this->oauthServerEnabled()) {
-            return parent::isAccessTokenRevoked($tokenId);
+        if (! $bound) {
+            $claims = is_string($serializedToken)
+                ? OAuthResourceIndicator::tokenClaims($serializedToken)
+                : null;
+
+            // A resource-bearing JWT without its database binding is incomplete;
+            // never silently downgrade it to an unbound Passport token.
+            if ($expectedResource !== null
+                || OAuthResourceIndicator::tokenHasAnyResourceAudience($serializedToken)
+                || is_string($claims['resource'] ?? null)) {
+                return true;
+            }
+
+            // The row is already known to exist and be non-revoked. Preserve
+            // Passport's normal unbound-token result without a second query.
+            if (! $this->oauthServerEnabled()) {
+                return false;
+            }
         }
 
         try {
@@ -157,15 +173,7 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
         }
 
         if (! $bound) {
-            $claims = is_string($serializedToken)
-                ? OAuthResourceIndicator::tokenClaims($serializedToken)
-                : null;
-
-            // A resource-bearing JWT without its database binding is incomplete;
-            // never silently downgrade it to an unbound Passport token.
-            return $expectedResource !== null
-                || OAuthResourceIndicator::tokenHasAnyResourceAudience($serializedToken)
-                || is_string($claims['resource'] ?? null);
+            return false;
         }
 
         // A resource-bound token is valid only where application policy has
