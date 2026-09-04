@@ -108,18 +108,27 @@ class AuthServiceProvider extends ServiceProvider
 
     private function registerOAuthServerBindings(bool $preserveExisting = false): void
     {
-        if (! $this->oauthServerEnabled() || ! class_exists(PassportAccessTokenRepository::class)) {
+        if (! class_exists(PassportAccessTokenRepository::class)) {
             return;
+        }
+
+        // Keep bearer audience enforcement active for already-issued bound tokens
+        // after issuance is disabled. The repository delegates unbound issuance and
+        // persistence to Passport while the opt-in server switch is off.
+        $bindings = [
+            PassportAccessTokenRepository::class => ResourceAccessTokenRepository::class,
+        ];
+        if ($this->oauthServerEnabled()) {
+            $bindings += [
+                PassportAuthCodeRepository::class => ResourceAuthCodeRepository::class,
+                PassportRefreshTokenRepository::class => ResourceRefreshTokenRepository::class,
+            ];
         }
 
         // Passport resolves these concrete bridge classes while constructing its
         // authorization/resource servers. Applications may still replace any of
         // the bindings in their own provider when they need additional bookkeeping.
-        foreach ([
-            PassportAccessTokenRepository::class => ResourceAccessTokenRepository::class,
-            PassportAuthCodeRepository::class => ResourceAuthCodeRepository::class,
-            PassportRefreshTokenRepository::class => ResourceRefreshTokenRepository::class,
-        ] as $abstract => $implementation) {
+        foreach ($bindings as $abstract => $implementation) {
             if (! $preserveExisting || ! $this->app->bound($abstract)) {
                 $this->app->bind($abstract, $implementation);
             }

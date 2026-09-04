@@ -34,6 +34,10 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
         array $scopes,
         ?string $userIdentifier = null,
     ): AccessTokenEntityInterface {
+        if (! $this->oauthServerEnabled()) {
+            return parent::getNewToken($clientEntity, $scopes, $userIdentifier);
+        }
+
         $token = new ResourceAccessToken($userIdentifier, $scopes, $clientEntity);
         $request = $this->request();
         $requestResource = $this->requestResource($request);
@@ -56,6 +60,12 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
 
     public function persistNewAccessToken(AccessTokenEntityInterface $accessTokenEntity): void
     {
+        if (! $this->oauthServerEnabled()) {
+            parent::persistNewAccessToken($accessTokenEntity);
+
+            return;
+        }
+
         $model = Passport::token();
         $resourceColumn = $this->resourceColumn();
         $hasResourceColumn = $this->hasColumn($model->getTable(), $resourceColumn);
@@ -128,16 +138,20 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
         $scopes = OAuthResourceIndicator::scopeIdentifiers($model->getAttribute('scopes'));
         $bound = $storedValue !== null || OAuthResourceIndicator::scopesRequireResource($scopes);
 
+        $request = $this->request();
+        $serializedToken = $request?->bearerToken();
+        $expectedResource = $request === null ? null : OAuthResourceIndicator::expectedFor($request);
+
+        if (! $bound && ! $this->oauthServerEnabled()) {
+            return parent::isAccessTokenRevoked($tokenId);
+        }
+
         try {
             $configuredResource = OAuthResourceIndicator::configuredCanonical();
             $issuer = OAuthResourceIndicator::issuer();
         } catch (Throwable) {
             return true;
         }
-
-        $request = $this->request();
-        $serializedToken = $request?->bearerToken();
-        $expectedResource = $request === null ? null : OAuthResourceIndicator::expectedFor($request);
         if (! OAuthResourceIndicator::tokenHasIssuer($serializedToken, $issuer)) {
             return true;
         }
@@ -202,6 +216,11 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
     private function request(): ?Request
     {
         return app()->bound('request') ? app('request') : null;
+    }
+
+    private function oauthServerEnabled(): bool
+    {
+        return (bool) config('bherila-auth.oauth_server.enabled', false);
     }
 
     private function recordDynamicClientUse(string $clientId): void

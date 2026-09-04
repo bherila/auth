@@ -82,8 +82,11 @@ resource-aware Passport middleware/configuration.
 ## OAuth/MCP server upgrade notes (next release)
 
 This is an opt-in server capability. Existing OAuth clients and the identity-provider
-role are unaffected unless an application enables `oauth_server.enabled` and routes the
-server helpers. An application that currently owns custom resource-aware Passport
+role keep Passport's normal unbound-token behavior unless an application enables
+`oauth_server.enabled` and routes the server helpers. When Passport is installed, the
+package keeps validation of previously issued resource-bound tokens active even after
+the issuance switch is disabled; it delegates unbound token issuance and persistence to
+Passport while disabled. An application that currently owns custom resource-aware Passport
 repositories should migrate to the package repositories only after verifying its
 configured resource and applying the new migration; remove duplicate bindings so one
 repository is responsible for the resource checks.
@@ -358,9 +361,11 @@ registered independently. Without this route middleware, changing
 existing client or refresh grant. The switch hides issuance routes; revoke existing
 credentials separately when an incident requires immediate credential invalidation.
 
-When `oauth_server.enabled` is true and Passport is installed, the package binds its
-resource-aware Passport repositories and access-token entity automatically. Routes are
-still application-owned. A typical app exposes the two metadata controller methods and
+When Passport is installed, the package keeps its resource-aware access-token repository
+bound so outstanding bound credentials remain audience-restricted. Enabling
+`oauth_server.enabled` additionally binds the resource-aware authorization-code and
+refresh-token repositories and access-token entity. Routes are still application-owned.
+A typical app exposes the two metadata controller methods and
 uses Passport's routes with `EnsureOAuthServerEnabled`, `EnforceOAuthPkce`, and
 `EnforceOAuthResourceIndicator`.
 If the application has its own Passport client model, extend `ResourceClient` (or apply

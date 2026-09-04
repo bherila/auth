@@ -15,6 +15,9 @@ the first entry here is in the git history.
   resource-server validation checks the stored binding, signed audience, configured issuer,
   route-declared expected resource, revocation state, and expiry before Passport
   authenticates the bearer. Bound tokens fail closed on unmarked Passport routes.
+- Disabling new authorization/token issuance no longer removes audience enforcement from
+  previously issued resource-bound access tokens; ordinary unbound Passport token behavior
+  remains delegated to Passport while the opt-in server is disabled.
 - Added the reusable RFC 9728 protected-resource metadata/challenge helper, including
   `resource_metadata` and scope-bearing 401/403 `WWW-Authenticate` responses.
 - Added opt-in RFC 9207 authorization-response issuer decoration; the metadata flag is

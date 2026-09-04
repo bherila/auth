@@ -20,6 +20,7 @@ use BWH\Auth\Tests\Fixtures\User;
 use BWH\Auth\Tests\TestCase;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -372,6 +373,39 @@ final class OAuthResourceTokenBindingTest extends TestCase
         Passport::token()->newQuery()->whereKey($tokenId)->update(['revoked' => true]);
 
         $this->getJson('/mcp', ['Authorization' => 'Bearer '.$serialized])->assertUnauthorized();
+    }
+
+    public function test_disabling_issuance_keeps_existing_resource_tokens_audience_bound(): void
+    {
+        [$user, $client] = $this->userAndPublicClient(['mcp:use']);
+        $token = $this->issueToken($user, $client);
+        $serialized = (string) $token->json('access_token');
+        $tokenId = (string) (OAuthResourceIndicator::tokenClaims($serialized)['jti'] ?? '');
+
+        config(['bherila-auth.oauth_server.enabled' => false]);
+        app()->forgetInstance(PassportAccessTokenRepository::class);
+        app()->bind(
+            PassportAccessTokenRepository::class,
+            fn (): PassportAccessTokenRepository => new PassportAccessTokenRepository(app('events')),
+        );
+        (new AuthServiceProvider(app()))->register();
+
+        $repository = app(PassportAccessTokenRepository::class);
+        self::assertInstanceOf(ResourceAccessTokenRepository::class, $repository);
+        $originalRequest = app('request');
+
+        try {
+            $expected = Request::create('/mcp', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$serialized]);
+            OAuthResourceIndicator::expectConfiguredFor($expected);
+            app()->instance('request', $expected);
+            self::assertFalse($repository->isAccessTokenRevoked($tokenId));
+
+            $other = Request::create('/other-api', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$serialized]);
+            app()->instance('request', $other);
+            self::assertTrue($repository->isAccessTokenRevoked($tokenId));
+        } finally {
+            app()->instance('request', $originalRequest);
+        }
     }
 
     public function test_bearer_validation_does_not_query_the_schema_catalog(): void
