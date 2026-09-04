@@ -24,6 +24,9 @@ use BWH\Auth\OAuth\Server\ResourceAuthCodeRepository;
 use BWH\Auth\OAuth\Server\ResourceRefreshTokenRepository;
 use BWH\Auth\OAuth\Server\ResourceClient;
 use BWH\Auth\Http\Middleware\AppendOAuthAuthorizationResponseIssuer;
+use BWH\Auth\OAuth\Introspection\OAuthIntrospectionValidationContext;
+use BWH\Auth\OAuth\Introspection\OAuthTokenIntrospector;
+use BWH\Auth\OAuth\Introspection\RemoteOAuthTokenIntrospector;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -38,6 +41,8 @@ class AuthServiceProvider extends ServiceProvider
                 : $app->make(NullAuthAuditLogger::class);
         });
         $this->app->bind(LoginThrottle::class, AuthAuditLogLoginThrottle::class);
+        $this->app->scoped(OAuthIntrospectionValidationContext::class);
+        $this->app->bind(OAuthTokenIntrospector::class, RemoteOAuthTokenIntrospector::class);
 
         $this->registerOAuthServerBindings();
     }

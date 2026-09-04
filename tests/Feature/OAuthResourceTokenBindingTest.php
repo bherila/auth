@@ -4,6 +4,7 @@ namespace BWH\Auth\Tests\Feature;
 
 use BWH\Auth\AuthServiceProvider;
 use BWH\Auth\Http\Controllers\OAuthDynamicClientRegistrationController;
+use BWH\Auth\Http\Controllers\OAuthTokenIntrospectionController;
 use BWH\Auth\Http\Middleware\AppendOAuthAuthorizationResponseIssuer;
 use BWH\Auth\Http\Middleware\EnforceOAuthPkce;
 use BWH\Auth\Http\Middleware\EnforceOAuthResourceIndicator;
@@ -80,6 +81,12 @@ final class OAuthResourceTokenBindingTest extends TestCase
         $app['config']->set('bherila-auth.oauth_server.dynamic_clients.scopes_column', 'scopes');
         $app['config']->set('bherila-auth.oauth_server.dynamic_clients.enforce_registered_scopes', true);
         $app['config']->set('bherila-auth.oauth_server.dynamic_clients.registered_at_column', 'dynamically_registered_at');
+        $app['config']->set('bherila-auth.oauth_server.introspection.enabled', true);
+        $app['config']->set('bherila-auth.oauth_server.introspection.clients', [[
+            'id' => 'mcp-resource-server',
+            'secret_hash' => password_hash('introspection-secret', PASSWORD_DEFAULT),
+            'resource' => self::RESOURCE,
+        ]]);
 
         Passport::$deviceCodeGrantEnabled = false;
     }
@@ -123,6 +130,7 @@ final class OAuthResourceTokenBindingTest extends TestCase
             ->middleware('auth:api');
         Route::post('/oauth/register', OAuthDynamicClientRegistrationController::class)
             ->middleware(ConvertEmptyStringsToNull::class);
+        Route::post('/oauth/introspect', OAuthTokenIntrospectionController::class);
     }
 
     protected function tearDown(): void
@@ -376,6 +384,87 @@ final class OAuthResourceTokenBindingTest extends TestCase
         Passport::token()->newQuery()->whereKey($tokenId)->update(['revoked' => true]);
 
         $this->getJson('/mcp', ['Authorization' => 'Bearer '.$serialized])->assertUnauthorized();
+    }
+
+    public function test_confidential_resource_server_can_introspect_only_its_bound_resource(): void
+    {
+        [$user, $client] = $this->userAndPublicClient(['mcp:use']);
+        $token = $this->issueToken($user, $client);
+        $serialized = (string) $token->json('access_token');
+
+        $active = $this->withHeader(
+            'Authorization',
+            'Basic '.base64_encode('mcp-resource-server:introspection-secret'),
+        )->post('/oauth/introspect', ['token' => $serialized, 'token_type_hint' => 'access_token']);
+
+        $active->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertJsonPath('active', true)
+            ->assertJsonPath('iss', self::ISSUER)
+            ->assertJsonPath('sub', (string) $user->getKey())
+            ->assertJsonPath('client_id', (string) $client->getKey())
+            ->assertJsonPath('scope', 'mcp:use')
+            ->assertJsonPath('resource', self::RESOURCE);
+        self::assertContains(self::RESOURCE, $active->json('aud'));
+
+        config(['bherila-auth.oauth_server.introspection.clients.0.resource' => 'HTTPS://AUTH.EXAMPLE.TEST:443/mcp']);
+        $this->withHeader(
+            'Authorization',
+            'Basic '.base64_encode('mcp-resource-server:introspection-secret'),
+        )->post('/oauth/introspect', ['token' => $serialized])
+            ->assertOk()
+            ->assertJsonPath('active', true);
+
+        config(['bherila-auth.oauth_server.introspection.clients.0.resource' => 'https://other.example.test/mcp']);
+        $this->withHeader(
+            'Authorization',
+            'Basic '.base64_encode('mcp-resource-server:introspection-secret'),
+        )->post('/oauth/introspect', ['token' => $serialized])
+            ->assertOk()
+            ->assertExactJson(['active' => false]);
+    }
+
+    public function test_introspection_rejects_bad_client_credentials_and_reports_revocation_as_inactive(): void
+    {
+        [$user, $client] = $this->userAndPublicClient(['mcp:use']);
+        $token = $this->issueToken($user, $client);
+        $serialized = (string) $token->json('access_token');
+        $tokenId = (string) (OAuthResourceIndicator::tokenClaims($serialized)['jti'] ?? '');
+
+        $this->withHeader('Authorization', 'Basic '.base64_encode('mcp-resource-server:wrong'))
+            ->post('/oauth/introspect', ['token' => $serialized])
+            ->assertUnauthorized()
+            ->assertHeader('WWW-Authenticate', 'Basic realm="oauth-introspection"')
+            ->assertJsonPath('error', 'invalid_client');
+
+        Passport::token()->newQuery()->whereKey($tokenId)->update(['revoked' => true]);
+
+        $this->withHeader(
+            'Authorization',
+            'Basic '.base64_encode('mcp-resource-server:introspection-secret'),
+        )->post('/oauth/introspect', ['token' => $serialized])
+            ->assertOk()
+            ->assertExactJson(['active' => false]);
+    }
+
+    public function test_introspection_decodes_form_encoded_basic_credentials(): void
+    {
+        [$user, $client] = $this->userAndPublicClient(['mcp:use']);
+        $serialized = (string) $this->issueToken($user, $client)->json('access_token');
+        $clientId = 'mcp: resource+server%';
+        $clientSecret = 'secret: with+percent%';
+        config(['bherila-auth.oauth_server.introspection.clients.0' => [
+            'id' => $clientId,
+            'secret_hash' => password_hash($clientSecret, PASSWORD_DEFAULT),
+            'resource' => self::RESOURCE,
+        ]]);
+
+        $this->withHeader(
+            'Authorization',
+            'Basic '.base64_encode(urlencode($clientId).':'.urlencode($clientSecret)),
+        )->post('/oauth/introspect', ['token' => $serialized])
+            ->assertOk()
+            ->assertJsonPath('active', true);
     }
 
     public function test_disabling_issuance_keeps_existing_resource_tokens_audience_bound(): void

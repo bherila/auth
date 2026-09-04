@@ -89,6 +89,26 @@ return [
             'approve_label' => 'Authorize',
             'deny_label' => 'Cancel',
         ],
+        'introspection' => [
+            // RFC 7662 is application-routed and opt-in. Each confidential
+            // resource-server credential is pinned to one exact resource so an
+            // introspector can never choose a broader audience at request time.
+            // Store only a password_hash() result in each `secret_hash` value.
+            'enabled' => false,
+            'clients' => [],
+        ],
+    ],
+
+    'oauth_resource_server' => [
+        // Backchannel validation for a separately deployed authorization server.
+        // Active responses are still checked locally against the exact issuer,
+        // resource, audience, and temporal claims before they are trusted.
+        'introspection_endpoint' => env('OAUTH_INTROSPECTION_ENDPOINT'),
+        'client_id' => env('OAUTH_INTROSPECTION_CLIENT_ID'),
+        'client_secret' => env('OAUTH_INTROSPECTION_CLIENT_SECRET'),
+        'issuer' => env('OAUTH_RESOURCE_ISSUER'),
+        'resource' => env('OAUTH_RESOURCE_URI'),
+        'timeout_seconds' => (int) env('OAUTH_INTROSPECTION_TIMEOUT_SECONDS', 5),
     ],
 
     'migrations' => [

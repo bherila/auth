@@ -9,13 +9,67 @@ Includes:
 
 - OAuth 2.0 authorization-code client mechanics with PKCE and validated identity responses
 - opt-in Passport authorization-server helpers for metadata, dynamic public-client registration,
-  S256 PKCE, RFC 8707 resource binding, and a shared consent experience
+  S256 PKCE, RFC 8707 resource binding, RFC 7662 backchannel introspection, and a shared consent experience
 - WebAuthn/passkey registration and login
 - email-code 2FA challenge service, API routes, and mailables
 - password reset request/reset/change API routes and mailables
 - passkey and 2FA database tables
 - login audit logging: an owned `auth_audit_log` table, a default database logger, binary IP storage, optional read endpoints, and opt-in retention (see "Login audit logging")
 - policy and audit contracts for app-specific behavior
+
+## Upgrading to v0.12.0 (separate OAuth resource servers)
+
+This release adds authenticated RFC 7662 token introspection for a protected resource
+that is deployed separately from its Passport authorization server. It also makes the
+three resource-aware Passport repositories extensible so an authorization-server app
+can layer account, grant, or credential-version policy on top of the package checks
+without replacing resource binding.
+
+The authorization server owns the route and explicitly opts in. Pin each confidential
+introspection client to one exact resource in server-side configuration; the request
+cannot select or broaden that resource:
+
+```php
+use BWH\Auth\Http\Controllers\OAuthTokenIntrospectionController;
+
+Route::post('/oauth/introspect', OAuthTokenIntrospectionController::class)
+    ->middleware('throttle:60,1');
+
+'oauth_server' => [
+    // existing server configuration...
+    'introspection' => [
+        'enabled' => true,
+        'clients' => [[
+            'id' => env('OAUTH_INTROSPECTION_CLIENT_ID'),
+            // Store only password_hash($secret, PASSWORD_DEFAULT) here.
+            'secret_hash' => env('OAUTH_INTROSPECTION_CLIENT_SECRET_HASH'),
+            'resource' => 'https://resource.example.test/mcp',
+        ]],
+    ],
+],
+```
+
+The resource server configures the same confidential credential and its expected
+issuer/resource, then resolves `OAuthTokenIntrospector`. The remote implementation does
+not positively cache responses: revocation and authorization-server account policy are
+therefore rechecked before every protected request.
+
+```php
+use BWH\Auth\OAuth\Introspection\OAuthTokenIntrospector;
+
+$token = app(OAuthTokenIntrospector::class)->introspect($request->bearerToken());
+```
+
+Set `OAUTH_INTROSPECTION_ENDPOINT`, `OAUTH_INTROSPECTION_CLIENT_ID`,
+`OAUTH_INTROSPECTION_CLIENT_SECRET`, `OAUTH_RESOURCE_ISSUER`, and
+`OAUTH_RESOURCE_URI`. An inactive token is returned as `active=false`; connection,
+authentication, schema, or active-claim mismatches throw `OAuthIntrospectionException`
+so the application can distinguish an invalid credential from an unavailable authority.
+The endpoint must use HTTPS (except loopback development) and the issuer's exact origin;
+redirects are never followed, so neither the bearer token nor confidential-client
+credential can be forwarded to another host.
+The resource application must still map `sub` to a local account and enforce all local
+authorization policy itself.
 
 ## Upgrading to v0.10.0 (breaking)
 

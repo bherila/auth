@@ -2,6 +2,7 @@
 
 namespace BWH\Auth\OAuth\Server;
 
+use BWH\Auth\OAuth\Introspection\OAuthIntrospectionValidationContext;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Http\Request;
 use Laravel\Passport\Events\AccessTokenCreated;
@@ -22,14 +23,14 @@ use Throwable;
  * the signed audience lets it reject a token whose credential was issued for a
  * different resource.
  */
-final class ResourceAccessTokenRepository extends PassportAccessTokenRepository implements AccessTokenRepositoryInterface
+class ResourceAccessTokenRepository extends PassportAccessTokenRepository implements AccessTokenRepositoryInterface
 {
     public function __construct(Dispatcher $events)
     {
         parent::__construct($events);
     }
 
-    public function getNewToken(
+    final public function getNewToken(
         ClientEntityInterface $clientEntity,
         array $scopes,
         ?string $userIdentifier = null,
@@ -58,10 +59,10 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
         return $token;
     }
 
-    public function persistNewAccessToken(AccessTokenEntityInterface $accessTokenEntity): void
+    final public function persistNewAccessToken(AccessTokenEntityInterface $accessTokenEntity): void
     {
         if (! $this->oauthServerEnabled()) {
-            parent::persistNewAccessToken($accessTokenEntity);
+            $this->persistUnboundAccessToken($accessTokenEntity);
 
             return;
         }
@@ -97,6 +98,20 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
             throw new RuntimeException("The {$model->getTable()}.{$resourceColumn} column is required.");
         }
 
+        $this->persistResourceAccessToken($accessTokenEntity, $resource, $hasResourceColumn);
+    }
+
+    /**
+     * Application policy may wrap the already-validated persistence operation in
+     * its own transaction, but cannot replace the resource checks above.
+     */
+    protected function persistResourceAccessToken(
+        AccessTokenEntityInterface $accessTokenEntity,
+        ?string $resource,
+        bool $hasResourceColumn,
+    ): void {
+        $model = Passport::token();
+        $resourceColumn = $this->resourceColumn();
         $attributes = [
             'id' => $id = $accessTokenEntity->getIdentifier(),
             'user_id' => $userId = $accessTokenEntity->getUserIdentifier(),
@@ -115,14 +130,20 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
         $this->events->dispatch(new AccessTokenCreated($id, $userId, $clientId));
     }
 
-    public function revokeAccessToken(string $tokenId): void
+    /** Application policy may also wrap Passport-compatible unbound persistence. */
+    protected function persistUnboundAccessToken(AccessTokenEntityInterface $accessTokenEntity): void
+    {
+        parent::persistNewAccessToken($accessTokenEntity);
+    }
+
+    final public function revokeAccessToken(string $tokenId): void
     {
         if (Passport::token()->newQuery()->whereKey($tokenId)->update(['revoked' => true])) {
             $this->events->dispatch(new AccessTokenRevoked($tokenId));
         }
     }
 
-    public function isAccessTokenRevoked(string $tokenId): bool
+    final public function isAccessTokenRevoked(string $tokenId): bool
     {
         $model = Passport::token()->newQuery()->whereKey($tokenId)->first();
         if ($model === null || (bool) $model->getAttribute('revoked')) {
@@ -139,8 +160,10 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
         $bound = $storedValue !== null || OAuthResourceIndicator::scopesRequireResource($scopes);
 
         $request = $this->request();
-        $serializedToken = $request?->bearerToken();
-        $expectedResource = $request === null ? null : OAuthResourceIndicator::expectedFor($request);
+        $introspection = app(OAuthIntrospectionValidationContext::class);
+        $serializedToken = $introspection->token() ?? $request?->bearerToken();
+        $expectedResource = $introspection->resource()
+            ?? ($request === null ? null : OAuthResourceIndicator::expectedFor($request));
 
         if (! $bound) {
             $claims = is_string($serializedToken)
@@ -158,7 +181,7 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
             // The row is already known to exist and be non-revoked. Preserve
             // Passport's normal unbound-token result without a second query.
             if (! $this->oauthServerEnabled()) {
-                return false;
+                return $this->isApplicationAccessTokenRevoked($tokenId);
             }
         }
 
@@ -173,7 +196,7 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
         }
 
         if (! $bound) {
-            return false;
+            return $this->isApplicationAccessTokenRevoked($tokenId);
         }
 
         // A resource-bound token is valid only where application policy has
@@ -190,8 +213,16 @@ final class ResourceAccessTokenRepository extends PassportAccessTokenRepository 
             return true;
         }
 
-        $request?->attributes->set(OAuthResourceIndicator::REQUEST_ATTRIBUTE, $storedResource);
+        if ($introspection->resource() === null) {
+            $request?->attributes->set(OAuthResourceIndicator::REQUEST_ATTRIBUTE, $storedResource);
+        }
 
+        return $this->isApplicationAccessTokenRevoked($tokenId);
+    }
+
+    /** Application-owned account, grant, or credential-version revocation policy. */
+    protected function isApplicationAccessTokenRevoked(string $tokenId): bool
+    {
         return false;
     }
 

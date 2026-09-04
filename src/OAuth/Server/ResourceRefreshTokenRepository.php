@@ -13,9 +13,9 @@ use RuntimeException;
 /**
  * Keeps refresh-token exchanges on the resource selected for the original grant.
  */
-final class ResourceRefreshTokenRepository extends PassportRefreshTokenRepository implements RefreshTokenRepositoryInterface
+class ResourceRefreshTokenRepository extends PassportRefreshTokenRepository implements RefreshTokenRepositoryInterface
 {
-    public function persistNewRefreshToken(RefreshTokenEntityInterface $refreshTokenEntity): void
+    final public function persistNewRefreshToken(RefreshTokenEntityInterface $refreshTokenEntity): void
     {
         $accessToken = $refreshTokenEntity->getAccessToken();
         $request = $this->request();
@@ -43,6 +43,17 @@ final class ResourceRefreshTokenRepository extends PassportRefreshTokenRepositor
             throw new RuntimeException("The {$model->getTable()}.{$resourceColumn} column is required.");
         }
 
+        $this->persistResourceRefreshToken($refreshTokenEntity, $resource, $hasResourceColumn);
+    }
+
+    protected function persistResourceRefreshToken(
+        RefreshTokenEntityInterface $refreshTokenEntity,
+        ?string $resource,
+        bool $hasResourceColumn,
+    ): void {
+        $accessToken = $refreshTokenEntity->getAccessToken();
+        $model = Passport::refreshToken();
+        $resourceColumn = $this->resourceColumn();
         $attributes = [
             'id' => $id = $refreshTokenEntity->getIdentifier(),
             'access_token_id' => $accessTokenId = $accessToken->getIdentifier(),
@@ -58,7 +69,7 @@ final class ResourceRefreshTokenRepository extends PassportRefreshTokenRepositor
         $this->events->dispatch(new RefreshTokenCreated($id, $accessTokenId));
     }
 
-    public function isRefreshTokenRevoked(string $tokenId): bool
+    final public function isRefreshTokenRevoked(string $tokenId): bool
     {
         if (parent::isRefreshTokenRevoked($tokenId)) {
             return true;
@@ -80,7 +91,7 @@ final class ResourceRefreshTokenRepository extends PassportRefreshTokenRepositor
         if (! $bound) {
             // A refresh request cannot add an audience that was absent from the
             // authorization-code grant.
-            return $hasRequestedResource;
+            return $hasRequestedResource || $this->isApplicationRefreshTokenRevoked($tokenId);
         }
 
         if ($storedResource === null
@@ -94,6 +105,12 @@ final class ResourceRefreshTokenRepository extends PassportRefreshTokenRepositor
 
         $request?->attributes->set(OAuthResourceIndicator::REQUEST_ATTRIBUTE, $storedResource);
 
+        return $this->isApplicationRefreshTokenRevoked($tokenId);
+    }
+
+    /** Application-owned account, grant, or credential-version revocation policy. */
+    protected function isApplicationRefreshTokenRevoked(string $tokenId): bool
+    {
         return false;
     }
 

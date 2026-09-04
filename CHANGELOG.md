@@ -4,6 +4,21 @@ Notable changes per release. Versions follow the tags published to
 [Packagist](https://packagist.org/packages/bherila/auth-laravel); anything older than
 the first entry here is in the git history.
 
+## v0.12.0 - 2026-09-04
+
+### Separate authorization and resource servers
+
+- Added opt-in RFC 7662 introspection backed by Passport's signature, expiry,
+  revocation, issuer, audience, and stored resource checks.
+- Introspection requires HTTP Basic credentials for a confidential resource server,
+  stores only a password hash server-side, and pins each configured credential to
+  one exact resource.
+- Added a remote introspection client that defensively validates active issuer,
+  audience, resource, scope, and temporal claims without positively caching results.
+- Made the three resource-aware Passport repository implementations extensible so
+  authorization-server applications can compose additional account and grant policy
+  without replacing RFC 8707 enforcement.
+
 ## v0.11.0 - 2026-09-04
 
 ### OAuth/MCP authorization-server foundation
