@@ -4,7 +4,7 @@ Notable changes per release. Versions follow the tags published to
 [Packagist](https://packagist.org/packages/bherila/auth-laravel); anything older than
 the first entry here is in the git history.
 
-## Unreleased (recommended v0.11.0, after the pending v0.10.0 release)
+## v0.11.0 - 2026-09-04
 
 ### OAuth/MCP authorization-server foundation
 
@@ -68,7 +68,7 @@ the first entry here is in the git history.
   DCR remains available for compatibility. See [issue #30](https://github.com/bherila/auth-laravel/issues/30)
   for the focused follow-up design.
 
-## Unreleased (v0.10.0)
+## v0.10.0 - 2026-09-04
 
 Breaking: this release drops PHP 8.3 and Laravel 12. For a pre-1.0 package `^0.9`
 resolves as `>=0.9.0 <0.10.0`, so shipping a platform drop as 0.9.x would upgrade

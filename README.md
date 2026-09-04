@@ -74,12 +74,11 @@ no longer erases the nested defaults added since. Republish (`--tag=bherila-auth
   fresh code for it.
 - The package dispatches Laravel's `PasswordResetLinkSent` and `PasswordReset` events.
 
-OAuth/MCP authorization-server changes described below are intentionally staged for the
-next release after the pending signed `v0.10.0` release. Consumers should not enable
+OAuth/MCP authorization-server changes described below ship in `v0.11.0`. Consumers should not enable
 `oauth_server.enabled` until they have run the OAuth metadata migration and added the
 resource-aware Passport middleware/configuration.
 
-## OAuth/MCP server upgrade notes (next release)
+## Upgrading to v0.11.0 (OAuth/MCP server)
 
 This is an opt-in server capability. Existing OAuth clients and the identity-provider
 role keep Passport's normal unbound-token behavior unless an application enables

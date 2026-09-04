@@ -1,6 +1,6 @@
 # Threat Model: bherila/auth-laravel
 
-_Last reviewed: 2026-09-03 (unreleased OAuth/MCP server foundation; pending v0.10.0 baseline). Re-review after route, controller, OAuth client/server, or `web-auth/webauthn-lib` changes._
+_Last reviewed: 2026-09-04 for the v0.11.0 OAuth/MCP server foundation. Re-review after route, controller, OAuth client/server, or `web-auth/webauthn-lib` changes._
 
 ## Scope
 
