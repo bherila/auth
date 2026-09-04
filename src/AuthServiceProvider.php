@@ -13,6 +13,17 @@ use BWH\Auth\Services\NullAuthAuditLogger;
 use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Passport\Passport;
+use Laravel\Passport\Client as PassportClient;
+use Laravel\Passport\Bridge\AccessTokenRepository as PassportAccessTokenRepository;
+use Laravel\Passport\Bridge\AuthCodeRepository as PassportAuthCodeRepository;
+use Laravel\Passport\Bridge\RefreshTokenRepository as PassportRefreshTokenRepository;
+use BWH\Auth\OAuth\Server\ResourceAccessToken;
+use BWH\Auth\OAuth\Server\ResourceAccessTokenRepository;
+use BWH\Auth\OAuth\Server\ResourceAuthCodeRepository;
+use BWH\Auth\OAuth\Server\ResourceRefreshTokenRepository;
+use BWH\Auth\OAuth\Server\ResourceClient;
+use BWH\Auth\Http\Middleware\AppendOAuthAuthorizationResponseIssuer;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -27,6 +38,8 @@ class AuthServiceProvider extends ServiceProvider
                 : $app->make(NullAuthAuditLogger::class);
         });
         $this->app->bind(LoginThrottle::class, AuthAuditLogLoginThrottle::class);
+
+        $this->registerOAuthServerBindings();
     }
 
     public function boot(): void
@@ -66,6 +79,65 @@ class AuthServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([PruneAuthAuditLogCommand::class]);
         }
+
+        // Testbench and applications with deferred configuration can apply the
+        // opt-in setting after provider registration but before provider boot.
+        $this->registerOAuthServerBindings(preserveExisting: true);
+        if ($this->oauthServerEnabled() && class_exists(Passport::class)) {
+            Passport::useAccessTokenEntity(ResourceAccessToken::class);
+            if (Passport::clientModel() === PassportClient::class) {
+                Passport::useClientModel(ResourceClient::class);
+            }
+        }
+
+        if ($this->oauthServerEnabled()
+            && config('bherila-auth.oauth_server.authorization_response_issuer.enabled', false)) {
+            $this->app->booted(function (): void {
+                foreach ([
+                    'passport.authorizations.authorize',
+                    'passport.authorizations.approve',
+                    'passport.authorizations.deny',
+                ] as $routeName) {
+                    Route::getRoutes()->getByName($routeName)?->middleware(
+                        AppendOAuthAuthorizationResponseIssuer::class,
+                    );
+                }
+            });
+        }
+    }
+
+    private function registerOAuthServerBindings(bool $preserveExisting = false): void
+    {
+        if (! class_exists(PassportAccessTokenRepository::class)) {
+            return;
+        }
+
+        // Keep bearer audience enforcement active for already-issued bound tokens
+        // after issuance is disabled. The repository delegates unbound issuance and
+        // persistence to Passport while the opt-in server switch is off.
+        $bindings = [
+            PassportAccessTokenRepository::class => ResourceAccessTokenRepository::class,
+        ];
+        if ($this->oauthServerEnabled()) {
+            $bindings += [
+                PassportAuthCodeRepository::class => ResourceAuthCodeRepository::class,
+                PassportRefreshTokenRepository::class => ResourceRefreshTokenRepository::class,
+            ];
+        }
+
+        // Passport resolves these concrete bridge classes while constructing its
+        // authorization/resource servers. Applications may still replace any of
+        // the bindings in their own provider when they need additional bookkeeping.
+        foreach ($bindings as $abstract => $implementation) {
+            if (! $preserveExisting || ! $this->app->bound($abstract)) {
+                $this->app->bind($abstract, $implementation);
+            }
+        }
+    }
+
+    private function oauthServerEnabled(): bool
+    {
+        return (bool) config('bherila-auth.oauth_server.enabled', false);
     }
 
     /**

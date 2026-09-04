@@ -79,7 +79,8 @@ class ConfigMergeTest extends TestCase
         $this->assertSame(['local', 'testing'], config('bherila-auth.two_factor.test_code_environments'));
         $this->assertSame('bherila_auth_2fa_user_id', config('bherila-auth.two_factor.session_user_key'));
         $this->assertSame('preferred', config('bherila-auth.passkeys.user_verification'));
-        $this->assertSame('mcp:use', config('bherila-auth.oauth_server.resource_required_scope'));
+        $this->assertNull(config('bherila-auth.oauth_server.resource_required_scope'));
+        $this->assertSame('resource_uri', config('bherila-auth.oauth_server.refresh_token_resource_column'));
     }
 
     public function test_nested_sections_merge_key_by_key(): void
@@ -87,7 +88,7 @@ class ConfigMergeTest extends TestCase
         $this->bootWithLegacyConfig();
 
         $this->assertSame('registered_at', config('bherila-auth.oauth_server.dynamic_clients.registered_at_column'));
-        $this->assertSame(['dynamically_registered_at'], config('bherila-auth.oauth_server.dynamic_clients.required_columns'));
+        $this->assertSame(['dynamically_registered_at', 'scopes'], config('bherila-auth.oauth_server.dynamic_clients.required_columns'));
     }
 
     public function test_a_configured_list_replaces_the_default_rather_than_merging_into_it(): void

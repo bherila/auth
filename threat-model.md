@@ -1,6 +1,6 @@
 # Threat Model: bherila/auth-laravel
 
-_Last reviewed: 2026-09-01 (v0.10.0). Re-review after route, controller, OAuth client/server, or `web-auth/webauthn-lib` changes._
+_Last reviewed: 2026-09-03 (unreleased OAuth/MCP server foundation; pending v0.10.0 baseline). Re-review after route, controller, OAuth client/server, or `web-auth/webauthn-lib` changes._
 
 ## Scope
 
@@ -9,7 +9,7 @@ _Last reviewed: 2026-09-01 (v0.10.0). Re-review after route, controller, OAuth c
 Covered package capabilities:
 
 - OAuth 2.0 authorization-code + PKCE client mechanics, and the relying-party session it owns.
-- Opt-in Passport authorization-server helpers: metadata, dynamic client registration, PKCE and resource-indicator enforcement, consent presentation.
+- Opt-in Passport authorization-server helpers: metadata, dynamic public-client registration, S256 PKCE and RFC 8707 resource-indicator enforcement, consent presentation, RFC 9728 protected-resource challenges, and resource-bound JWT access tokens.
 - WebAuthn/passkey registration, deletion, and login APIs.
 - Password reset APIs and Laravel mailables.
 - Authenticated password change API.
@@ -43,6 +43,7 @@ Out of scope:
 - WebAuthn registration and authentication challenges stored in the Laravel session.
 - CSRF tokens.
 - Mail contents for password reset, password reset notice, and 2FA code emails.
+- OAuth authorization state, authorization codes, refresh tokens, access-token JWTs, resource/audience bindings, registered redirect URIs, client scope restrictions, and consent decisions.
 - Audit events and logs emitted by consuming apps.
 
 ## Trust boundaries
@@ -51,6 +52,8 @@ Out of scope:
 - Laravel app to database.
 - Laravel app to configured mail transport.
 - Laravel app session storage to WebAuthn challenge verification.
+- Browser/client to the OAuth authorization server and consent UI.
+- OAuth authorization server to the Passport token database and protected resource endpoint.
 - Composer dependency supply chain to deployed package code.
 - App-specific policy layer through `AuthUserPolicy` and `AuthAuditLogger`.
 
@@ -75,6 +78,10 @@ Default package routes are registered under the app-configured prefix, usually `
 The OAuth client and authorization-server helpers are classes, not routes: the consuming
 app owns and names those endpoints, so they are entry points of the app, reached through
 package code.
+
+When enabled by an application, the OAuth entry points also include the metadata and DCR
+controller methods, Passport's authorization/token routes, and any protected endpoint
+that returns an `OAuthProtectedResource` bearer challenge.
 
 ## Key assumptions
 
@@ -111,6 +118,16 @@ package code.
 | Session fixation after passkey login | Attacker forces victim into known session. | Passkey login regenerates the Laravel session. | Ensure app password login and signup paths also regenerate sessions. |
 | Weak app-specific auth policy | Inactive, banned, or unverified users authenticate. | `AuthUserPolicy` interface controls whether passkey login is allowed and where to redirect. | Override policy for app-specific status checks and email verification requirements. |
 | Missing audit visibility | Security events occur without detection. | Events are dispatched and `AuthAuditLogger` contract exists; the package logs through whatever logger consumers bind. | Bind a real audit logger in apps that need monitoring, alerting, or SIEM integration. Without one, key events are not retained. |
+| OAuth resource confusion / token redirect | A bearer token issued for one protected resource is replayed at another resource or another Passport route in the same application, including after new issuance is disabled. | The opt-in repositories persist the validated resource through consent, authorization code, token and refresh exchange; bound JWTs carry it in `aud` and `resource`; bearer validation checks the stored binding, signed audience, configured issuer, route-declared expected resource, and revocation state. Scope lists are normalized from supported JSON, array, and collection casts before deciding whether a resource binding is required. The access-token validation repository remains active when issuance is disabled. Truly unbound tokens retain Passport-compatible handling only on unmarked routes; an expected-resource route or a resource-bearing JWT missing its database binding fails closed. Bound tokens fail closed on routes without an expected-resource declaration. | Configure the exact resource URI, run the OAuth metadata migration, enable `oauth_server.enabled` for issuance, and put `ExpectOAuthResource` before Passport authentication on each accepting route (or set the expectation before direct resource-server validation). Disabling issuance is not token revocation; revoke outstanding credentials separately when required. |
+| Resource substitution during code or refresh exchange | A stolen/intercepted grant is exchanged for a different audience, or a refresh request adds an audience later. | Authorization-code and refresh-token repositories require the original resource, reject missing/different values, and preserve the binding on rotated access tokens. The refresh-token row owns its resource binding, so purging an expired parent access-token row does not erase the audience or invalidate a still-live refresh token. | Send the same `resource` value on authorization and every token request; publish the refresh-token resource column before enabling issuance; do not issue tokens through a bypass route or alternate repository. |
+| Authorization resource state loss | Request-local or node-local cache state disappears between authorization, login, and consent, preventing the validated resource from reaching the code. | Resource state is keyed by a hash of Passport's opaque approval token, retained for the browser-session lifetime, and issuance fails closed when it cannot be recovered. | Use a persistent Laravel default cache store shared by every authorization-server node; never use the `array` store for this flow, and preserve the configured prefix for at least the authorization-state TTL. |
+| OAuth issuer mix-up | A client accepts an authorization response or bearer token from an unintended issuer. | Issuer metadata is taken from the exact configured issuer; optional RFC 9207 decoration uses that exact value; resource-bound JWT validation checks `iss`. | Use one canonical issuer per deployment, enable RFC 9207 only when its middleware covers every authorization/consent response, and verify metadata after proxy/tenant changes. |
+| OAuth authorization response leakage or redirect abuse | A browser/cache retains authorization state or errors, or an invalid/revoked client uses pre-validation as a redirector. | Authorization and consent responses carry `Cache-Control: no-store` and `Pragma: no-cache`. Errors redirect only after loading an active client and matching the exact registered callback; omission is accepted only when one callback is registered. | Keep package middleware on every authorization/consent route, preserve exact redirect registration, and revoke compromised clients rather than only hiding their UI. |
+| Dynamic-client scope escalation | A public client registers narrowly and later asks for broader application permissions. | Registration scopes are checked against the application catalog and stored on the client; dynamic-client requests are always required to be a subset of registered scopes (or the configured catalog when registration omitted one); consent remains in the flow; refresh cannot add scopes. DCR parses its bounded raw JSON document so Laravel's empty-string normalization cannot change an explicitly empty scope into an omitted scope. | Apply the OAuth migration and make the configured scope catalog the sole source of application permissions. The legacy `enforce_registered_scopes` switch is not a security bypass. |
+| Public-client secret misuse | A public MCP client receives a reusable secret or is treated as trusted merely because it used DCR. | DCR creates `confidential:false` clients with no response secret; only public auth-code + refresh grants are accepted; the shared consent path remains active. The accepted application types are `native` and `web`; loopback HTTP is allowed only for native/unspecified development clients, while hosted/web clients require HTTPS. | Do not add a client secret to native/loopback or hosted public clients, and do not mark dynamic clients first-party in an application policy/model override. |
+| Protected-resource discovery failure | A client cannot discover the authorization server or does not understand the API challenge. | Reusable RFC 9728 metadata and `WWW-Authenticate` helpers include `authorization_servers`, supported scopes, bearer method, and `resource_metadata` when configured. | Route the metadata document at the exact configured URI and return the helper's challenge from the MCP endpoint's unauthenticated/insufficient-scope responses. |
+| Disabled server still issues credentials | An operator turns off metadata/DCR but Passport's separately registered authorization or token routes continue processing existing clients and refresh grants. | `EnsureOAuthServerEnabled` returns a non-cacheable 404 before application-owned Passport routes execute. Package metadata and DCR controllers enforce the same opt-in switch themselves. | Install the gate on every Passport authorization/token route, clear cached configuration after changing the flag, and revoke existing credentials separately when required. |
+| Unsafe client metadata retrieval | A URL-form client ID causes server-side fetches into private infrastructure. | Client ID Metadata Documents are not enabled or advertised in this release; no arbitrary client URL is fetched. | Use DCR compatibility for now. Do not add `client_id_metadata_document_supported` until the follow-up implementation includes URL identity resolution, bounded fetches, redirect policy, DNS/IP SSRF defenses, and safe caching. |
 | Dependency compromise | Composer package or transitive dependency is compromised. | Package is versioned and installable from tagged GitHub source. | Pin Composer lockfiles, review dependency updates, run CI, monitor advisories. |
 
 ## Design decisions
@@ -127,12 +144,28 @@ These are gaps in package behavior that the threat table flags above. They are l
 - **No package-level rate limiting on auth endpoints.** 2FA verify/resend, 2FA report, and passkey assertion endpoints rely entirely on consumer-applied rate limits. Reset requests carry the password broker's own recently-created-token throttle, which is not a substitute for a route limiter. The package could ship sensible defaults via `RateLimiter` definitions.
 - **No per-attempt failure or resend cap on 2FA.** An attempt row can absorb unlimited wrong codes until it expires, and each resend issues a fresh one.
 - **2FA attempts are consumed with a read-then-write.** Two concurrent submissions of the same valid code can both pass the `isValid()` check before either marks the row used. Making consumption a single conditional update would close it.
+- **Client ID Metadata Documents are deferred.** DCR remains the compatibility mechanism. The package deliberately does not advertise or fetch URL-form client IDs until it can map the external client identity into Passport and enforce bounded, SSRF-safe document retrieval. The design is tracked in [issue #30](https://github.com/bherila/auth-laravel/issues/30).
+- **MCP protocol policy remains application-owned.** This package does not implement MCP transport, tool authorization, endpoint routing, or application-specific scope policy. Consumers must install the resource-aware Passport bindings and return the protected-resource challenge from their own endpoint.
 
 ## Security checklist for consuming apps
 
 - Confirm deployed `composer.lock` uses a fixed package version known to include required security fixes.
 - Confirm `web-auth/webauthn-lib` is compatible with the package code.
 - Confirm `APP_URL` matches the production origin exactly.
+- If acting as an OAuth authorization server, set `oauth_server.enabled`, the exact issuer,
+  the exact protected resource, and `protected_resource_metadata_url`; publish and run
+  `2026_09_02_000000_add_oauth_server_metadata` before issuing bound tokens.
+- Use a persistent default cache store shared by all authorization-server nodes so the
+  validated resource survives authorization, login, and consent request boundaries.
+- Review DCR registrations; public clients must have no reusable secret and must go through
+  consent. Registered-scope enforcement is always active.
+- Add `EnsureOAuthServerEnabled`, `EnforceOAuthPkce`, and
+  `EnforceOAuthResourceIndicator` to the Passport routes; if RFC 9207 is enabled, add
+  `AppendOAuthAuthorizationResponseIssuer` to every authorization and consent route.
+- Put `ExpectOAuthResource` before Passport authentication on each protected route that
+  accepts the resource-bound credential; an unmarked route rejects bound tokens.
+- Return `OAuthProtectedResource::unauthorizedResponse()` / `insufficientScopeResponse()`
+  from the protected endpoint and verify the challenge's `resource_metadata` URI.
 - Configure `bherila-auth.passkeys.allowed_origins` for every trusted production origin.
 - Ensure all auth routes are HTTPS-only in production.
 - Ensure cookies are secure and same-site.

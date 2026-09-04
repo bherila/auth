@@ -4,6 +4,7 @@ namespace BWH\Auth\OAuth\Server;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use JsonException;
 
 final class DynamicClientRegistrationValidator
 {
@@ -22,7 +23,15 @@ final class DynamicClientRegistrationValidator
 
         // RFC 7591 requires unknown client metadata to be ignored. Validate the
         // fields this server acts on without rejecting harmless harness metadata.
-        $validator = Validator::make($request->json()->all(), [
+        try {
+            $metadata = json_decode((string) $request->getContent(), true, 64, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            throw new InvalidClientMetadata('Client registration requires a JSON object.');
+        }
+        if (! is_array($metadata)) {
+            throw new InvalidClientMetadata('Client registration requires a JSON object.');
+        }
+        $validator = Validator::make($metadata, [
             'client_name' => ['required', 'string', 'min:1', 'max:100'],
             'redirect_uris' => ['required', 'array', 'min:1', 'max:10'],
             'redirect_uris.*' => ['required', 'string', 'max:2048'],
@@ -31,8 +40,11 @@ final class DynamicClientRegistrationValidator
             'response_types' => ['sometimes', 'array', 'size:1'],
             'response_types.*' => ['string', 'in:code'],
             'token_endpoint_auth_method' => ['sometimes', 'string', 'in:none'],
-            'scope' => ['sometimes', 'string', 'min:1', 'max:2048'],
-            'application_type' => ['sometimes', 'string', 'in:native'],
+            // An explicitly empty scope is meaningful: it registers a client with
+            // no requested scopes. Omission means the authorization server's
+            // configured catalog remains the upper bound.
+            'scope' => ['sometimes', 'string', 'max:2048'],
+            'application_type' => ['sometimes', 'string', 'in:native,web'],
         ]);
         if ($validator->fails()) {
             throw new InvalidClientMetadata;
@@ -51,9 +63,12 @@ final class DynamicClientRegistrationValidator
             throw new InvalidClientMetadata;
         }
 
+        $applicationType = isset($metadata['application_type'])
+            ? (string) $metadata['application_type']
+            : null;
         $redirectUris = [];
         foreach ($metadata['redirect_uris'] as $redirectUri) {
-            if (! is_string($redirectUri) || ! $this->validRedirectUri($redirectUri)) {
+            if (! is_string($redirectUri) || ! $this->validRedirectUri($redirectUri, $applicationType)) {
                 throw new InvalidClientMetadata;
             }
             $redirectUris[] = $redirectUri;
@@ -63,10 +78,13 @@ final class DynamicClientRegistrationValidator
             throw new InvalidClientMetadata;
         }
 
-        $scopes = null;
-        if (isset($metadata['scope'])) {
+        // An omitted scope uses the application catalog as the client's explicit
+        // upper bound. This keeps a nullable registration field from becoming an
+        // accidental scope-escalation escape hatch.
+        $scopes = $allowedScopes;
+        if (array_key_exists('scope', $metadata)) {
             $scopes = self::parseScopes((string) $metadata['scope']);
-            if ($scopes === [] || array_diff($scopes, $allowedScopes) !== []) {
+            if (array_diff($scopes, $allowedScopes) !== []) {
                 throw new InvalidClientMetadata;
             }
         }
@@ -75,7 +93,7 @@ final class DynamicClientRegistrationValidator
             clientName: $clientName,
             redirectUris: $redirectUris,
             scopes: $scopes,
-            applicationType: isset($metadata['application_type']) ? (string) $metadata['application_type'] : null,
+            applicationType: $applicationType,
         );
     }
 
@@ -88,13 +106,17 @@ final class DynamicClientRegistrationValidator
         )));
     }
 
-    private function validRedirectUri(string $redirectUri): bool
+    private function validRedirectUri(string $redirectUri, ?string $applicationType): bool
     {
         if (filter_var($redirectUri, FILTER_VALIDATE_URL) === false) {
             return false;
         }
 
-        $parts = parse_url($redirectUri);
+        try {
+            $parts = parse_url($redirectUri);
+        } catch (\ValueError) {
+            return false;
+        }
         if (! is_array($parts)
             || ! isset($parts['scheme'], $parts['host'])
             || isset($parts['fragment'])
@@ -102,11 +124,16 @@ final class DynamicClientRegistrationValidator
             || isset($parts['pass'])) {
             return false;
         }
+        if (isset($parts['port']) && ((int) $parts['port'] < 1 || (int) $parts['port'] > 65535)) {
+            return false;
+        }
 
         $scheme = strtolower((string) $parts['scheme']);
         $host = strtolower((string) $parts['host']);
 
         return $scheme === 'https'
-            || ($scheme === 'http' && in_array($host, ['localhost', '127.0.0.1', '[::1]'], true));
+            || ($applicationType !== 'web'
+                && $scheme === 'http'
+                && in_array($host, ['localhost', '127.0.0.1', '[::1]'], true));
     }
 }

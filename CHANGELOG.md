@@ -4,6 +4,70 @@ Notable changes per release. Versions follow the tags published to
 [Packagist](https://packagist.org/packages/bherila/auth-laravel); anything older than
 the first entry here is in the git history.
 
+## Unreleased (recommended v0.11.0, after the pending v0.10.0 release)
+
+### OAuth/MCP authorization-server foundation
+
+- Added opt-in Passport repositories and a JWT access-token entity that carry one
+  configured protected-resource URI from authorization request and consent state through
+  authorization codes, access/refresh token exchange, and refresh rotation.
+- Resource-bound access tokens carry the protected resource in `aud` and `resource`, and
+  resource-server validation checks the stored binding, signed audience, configured issuer,
+  route-declared expected resource, revocation state, and expiry before Passport
+  authenticates the bearer. Bound tokens fail closed on unmarked Passport routes.
+- Disabling new authorization/token issuance no longer removes audience enforcement from
+  previously issued resource-bound access tokens; ordinary unbound Passport token behavior
+  remains compatible on unmarked routes while the opt-in server is disabled. Unbound or
+  incompletely bound tokens still fail closed wherever a route expects a resource.
+- Added the reusable RFC 9728 protected-resource metadata/challenge helper, including
+  `resource_metadata` and scope-bearing 401/403 `WWW-Authenticate` responses.
+- Added opt-in RFC 9207 authorization-response issuer decoration; the metadata flag is
+  emitted only when the corresponding middleware is enabled.
+- DCR metadata is advertised only when an endpoint is configured. Public clients accept
+  native or hosted/web authorization-code + refresh-token profiles with `none` token
+  authentication, never receive a reusable secret, and retain explicit registered scope
+  limits; loopback redirects remain native-only.
+- Added a safe, idempotent Passport metadata/resource-column migration and documented
+  consumer migration steps.
+- Refresh tokens now persist their resource binding directly, so a valid longer-lived
+  refresh token remains usable after Passport purges its expired access-token row.
+- Metadata controller routes now fail closed with a non-cacheable 404 while the opt-in
+  OAuth server is disabled, so accidentally routed discovery endpoints cannot advertise
+  an inactive server.
+- Added `EnsureOAuthServerEnabled` for application-owned Passport authorization/token
+  routes, so disabling the opt-in server can stop new issuance and refresh processing
+  instead of hiding only package metadata and registration routes.
+- Resource URI identity now preserves a configured trailing slash, and the protected
+  resource helper derives the RFC 9728 path-based well-known metadata URL when no override
+  is configured.
+- Dynamic registrations now persist the configured scope catalog when the request omits
+  `scope`; legacy dynamic clients without a stored scope fail closed rather than becoming
+  implicitly unrestricted.
+- Dynamic registration validates the bounded raw JSON document so Laravel's global empty-
+  string normalization cannot turn an explicitly empty `scope` into an omitted scope and
+  accidentally register the server catalog instead.
+- Enabling the resource-aware Passport binding requires legacy Passport bearer tokens to
+  be reissued because they do not carry the package's issuer claim.
+- Protected routes accepting bound credentials must put `ExpectOAuthResource` before
+  Passport authentication (or set the same request expectation before direct validation).
+- Authorization resource state requires Laravel's default cache to persist across
+  requests and be shared by every authorization-server node; the request-local `array`
+  store is unsupported for this flow and causes issuance to fail closed.
+- Authorization and consent responses now carry `no-store`/`no-cache`; pre-validation
+  errors redirect only to an active client's exact registered callback, including the
+  sole registered callback when the optional `redirect_uri` is omitted.
+- Registered scope ceilings accept supported array, JSON, and collection casts, and
+  auth-code scope persistence avoids double-encoding cast model attributes. Access-token
+  validation also normalizes collection-cast scopes before deciding whether a token must
+  carry a protected-resource binding, including while new issuance is disabled.
+
+### Deferred
+
+- Client ID Metadata Documents are not advertised or fetched yet. URL-form client IDs
+  require a Passport client-identity adapter and hardened SSRF-safe document retrieval;
+  DCR remains available for compatibility. See [issue #30](https://github.com/bherila/auth-laravel/issues/30)
+  for the focused follow-up design.
+
 ## Unreleased (v0.10.0)
 
 Breaking: this release drops PHP 8.3 and Laravel 12. For a pre-1.0 package `^0.9`
