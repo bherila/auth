@@ -15,6 +15,7 @@ use BWH\Auth\OAuth\Server\ResourceClient;
 use BWH\Auth\OAuth\Server\ResourceRefreshTokenRepository;
 use BWH\Auth\Tests\Fixtures\ArrayScopesAuthCode;
 use BWH\Auth\Tests\Fixtures\CollectionScopesClient;
+use BWH\Auth\Tests\Fixtures\CollectionScopesToken;
 use BWH\Auth\Tests\Fixtures\FailingDynamicRegistrationClient;
 use BWH\Auth\Tests\Fixtures\User;
 use BWH\Auth\Tests\TestCase;
@@ -36,6 +37,7 @@ use Laravel\Passport\Client;
 use Laravel\Passport\ClientRepository;
 use Laravel\Passport\Passport;
 use Laravel\Passport\PassportServiceProvider;
+use Laravel\Passport\Token;
 use RuntimeException;
 
 final class OAuthResourceTokenBindingTest extends TestCase
@@ -128,6 +130,7 @@ final class OAuthResourceTokenBindingTest extends TestCase
         Passport::useAccessTokenEntity(AccessToken::class);
         Passport::useAuthCodeModel(AuthCode::class);
         Passport::useClientModel(Client::class);
+        Passport::useTokenModel(Token::class);
 
         parent::tearDown();
     }
@@ -443,6 +446,38 @@ final class OAuthResourceTokenBindingTest extends TestCase
             self::assertCount(1, $tokenQueries);
         } finally {
             DB::connection()->disableQueryLog();
+            app()->instance('request', $originalRequest);
+        }
+    }
+
+    public function test_disabled_issuance_does_not_misclassify_collection_cast_required_scopes_as_unbound(): void
+    {
+        Passport::useTokenModel(CollectionScopesToken::class);
+        [$user, $client] = $this->userAndPublicClient(['mcp:use']);
+        Passport::token()->forceFill([
+            'id' => 'collection-scope-token-id',
+            'user_id' => $user->getKey(),
+            'client_id' => $client->getKey(),
+            'scopes' => ['mcp:use'],
+            'revoked' => false,
+            'expires_at' => now()->addHour(),
+            'resource_uri' => null,
+        ])->save();
+        self::assertInstanceOf(Collection::class, Passport::token()->newQuery()
+            ->findOrFail('collection-scope-token-id')
+            ->getAttribute('scopes'));
+
+        $repository = $this->disabledAccessTokenRepository();
+        $originalRequest = app('request');
+
+        try {
+            app()->instance('request', Request::create(
+                '/other-api',
+                server: ['HTTP_AUTHORIZATION' => 'Bearer legacy-unbound-token'],
+            ));
+
+            self::assertTrue($repository->isAccessTokenRevoked('collection-scope-token-id'));
+        } finally {
             app()->instance('request', $originalRequest);
         }
     }

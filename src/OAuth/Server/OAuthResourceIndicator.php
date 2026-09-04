@@ -4,6 +4,7 @@ namespace BWH\Auth\OAuth\Server;
 
 use Illuminate\Http\Request;
 use RuntimeException;
+use Traversable;
 
 final class OAuthResourceIndicator
 {
@@ -148,7 +149,7 @@ final class OAuthResourceIndicator
      * The application owns the scope catalog and declares which of those scopes
      * require an audience-bound resource credential.
      *
-     * @param  mixed  $scopes  Scope identifiers, a JSON array, or Passport scope entities.
+     * @param  mixed  $scopes  Scope identifiers, a JSON array, an iterable collection, or Passport scope entities.
      */
     public static function scopesRequireResource(mixed $scopes): bool
     {
@@ -164,6 +165,9 @@ final class OAuthResourceIndicator
             $scopes = json_last_error() === JSON_ERROR_NONE
                 ? (is_array($decoded) ? $decoded : [])
                 : preg_split('/\s+/', $trimmed);
+        }
+        if ($scopes instanceof Traversable) {
+            $scopes = iterator_to_array($scopes);
         }
         if (! is_array($scopes) || ! array_is_list($scopes)) {
             return [];

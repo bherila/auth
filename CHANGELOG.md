@@ -57,7 +57,9 @@ the first entry here is in the git history.
   errors redirect only to an active client's exact registered callback, including the
   sole registered callback when the optional `redirect_uri` is omitted.
 - Registered scope ceilings accept supported array, JSON, and collection casts, and
-  auth-code scope persistence avoids double-encoding cast model attributes.
+  auth-code scope persistence avoids double-encoding cast model attributes. Access-token
+  validation also normalizes collection-cast scopes before deciding whether a token must
+  carry a protected-resource binding, including while new issuance is disabled.
 
 ### Deferred
 
