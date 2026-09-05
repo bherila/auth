@@ -13,9 +13,9 @@ use RuntimeException;
  * Carries the validated resource from Passport's authorization request into the
  * authorization-code record and checks it again during code exchange.
  */
-final class ResourceAuthCodeRepository extends PassportAuthCodeRepository implements AuthCodeRepositoryInterface
+class ResourceAuthCodeRepository extends PassportAuthCodeRepository implements AuthCodeRepositoryInterface
 {
-    public function persistNewAuthCode(AuthCodeEntityInterface $authCodeEntity): void
+    final public function persistNewAuthCode(AuthCodeEntityInterface $authCodeEntity): void
     {
         $model = Passport::authCode();
         $resourceColumn = $this->resourceColumn();
@@ -43,6 +43,25 @@ final class ResourceAuthCodeRepository extends PassportAuthCodeRepository implem
             throw new RuntimeException("The {$model->getTable()}.{$resourceColumn} column is required.");
         }
 
+        $this->persistResourceAuthCode(
+            $authCodeEntity,
+            $resource,
+            $hasResourceColumn,
+            $scopeIdentifiers,
+        );
+    }
+
+    /**
+     * @param  list<string>  $scopeIdentifiers
+     */
+    protected function persistResourceAuthCode(
+        AuthCodeEntityInterface $authCodeEntity,
+        ?string $resource,
+        bool $hasResourceColumn,
+        array $scopeIdentifiers,
+    ): void {
+        $model = Passport::authCode();
+        $resourceColumn = $this->resourceColumn();
         $attributes = [
             'id' => $authCodeEntity->getIdentifier(),
             'user_id' => $authCodeEntity->getUserIdentifier(),
@@ -60,7 +79,7 @@ final class ResourceAuthCodeRepository extends PassportAuthCodeRepository implem
         $model->forceFill($attributes)->save();
     }
 
-    public function isAuthCodeRevoked(string $codeId): bool
+    final public function isAuthCodeRevoked(string $codeId): bool
     {
         if (parent::isAuthCodeRevoked($codeId)) {
             return true;
@@ -83,7 +102,7 @@ final class ResourceAuthCodeRepository extends PassportAuthCodeRepository implem
 
         if (! $bound) {
             // A token request may not add a resource audience to an unbound code.
-            return $hasRequestedResource;
+            return $hasRequestedResource || $this->isApplicationAuthCodeRevoked($codeId);
         }
 
         if ($storedResource === null
@@ -95,6 +114,12 @@ final class ResourceAuthCodeRepository extends PassportAuthCodeRepository implem
 
         $request?->attributes->set(OAuthResourceIndicator::REQUEST_ATTRIBUTE, $storedResource);
 
+        return $this->isApplicationAuthCodeRevoked($codeId);
+    }
+
+    /** Application-owned account, grant, or credential-version revocation policy. */
+    protected function isApplicationAuthCodeRevoked(string $codeId): bool
+    {
         return false;
     }
 
