@@ -211,12 +211,27 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
         if (! is_float($value)
             || ! is_finite($value)
             || floor($value) !== $value
-            || $value < (float) PHP_INT_MIN
-            || (PHP_INT_SIZE >= 8 ? $value >= 2 ** 63 : $value > (float) PHP_INT_MAX)) {
+            || ! $this->withinIntegerRange($value)) {
             throw new OAuthIntrospectionException('The active OAuth introspection response has an invalid timestamp.');
         }
 
         return (int) $value;
+    }
+
+    /**
+     * Doubles cannot represent every integer near the 64-bit bounds, so an
+     * out-of-range JSON literal such as -9223372036854775809.0 decodes to the
+     * double that is exactly PHP_INT_MIN and would otherwise be accepted. Both
+     * bounds are therefore exclusive there. A 32-bit int range is represented
+     * exactly by a double, so those bounds stay inclusive.
+     */
+    private function withinIntegerRange(float $value): bool
+    {
+        if (PHP_INT_SIZE >= 8) {
+            return $value > -(2 ** 63) && $value < 2 ** 63;
+        }
+
+        return $value >= (float) PHP_INT_MIN && $value <= (float) PHP_INT_MAX;
     }
 
     private function optionalInteger(mixed $value): ?int

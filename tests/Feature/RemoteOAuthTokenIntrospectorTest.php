@@ -106,7 +106,67 @@ final class RemoteOAuthTokenIntrospectorTest extends TestCase
             'infinity' => ['Infinity'],
             'overflow' => ['9223372036854775808'],
             'underflow' => ['-9223372036854775809'],
+            // A double cannot represent these literals, so json_decode rounds
+            // them onto the exact platform bounds. They must not be laundered
+            // into PHP_INT_MAX by the range check.
+            'float overflow' => ['9223372036854775809.0'],
+            'float upper bound' => ['9223372036854775808.0'],
         ];
+    }
+
+    #[DataProvider('outOfRangeIssuedAtProvider')]
+    public function test_it_rejects_out_of_range_issued_at_timestamps(string $issuedAt): void
+    {
+        $expiresAt = time() + 300;
+        Http::fake([
+            self::ENDPOINT => Http::response(
+                $this->activeResponseJson((string) $expiresAt, $issuedAt),
+                200,
+                ['Content-Type' => 'application/json'],
+            ),
+        ]);
+
+        $this->expectException(OAuthIntrospectionException::class);
+
+        app(RemoteOAuthTokenIntrospector::class)->introspect('out-of-range-iat');
+    }
+
+    /**
+     * `iat` carries no ordering constraint, so unlike `exp` it is rejected only
+     * by the range check itself. The underflow literal is the important case:
+     * json_decode rounds it onto exactly PHP_INT_MIN, where an inclusive lower
+     * bound would silently accept it.
+     *
+     * @return array<string, array{string}>
+     */
+    public static function outOfRangeIssuedAtProvider(): array
+    {
+        return [
+            'float underflow' => ['-9223372036854775809.0'],
+            'float lower bound' => ['-9223372036854775808.0'],
+            'float overflow' => ['9223372036854775809.0'],
+            'float upper bound' => ['9223372036854775808.0'],
+            'fraction' => ['1770000000.5'],
+            'integer underflow' => ['-9223372036854775809'],
+        ];
+    }
+
+    public function test_it_still_accepts_the_largest_representable_in_range_float(): void
+    {
+        // The greatest double strictly below 2 ** 63; the exclusive bounds must
+        // not narrow the accepted range any further than the rounding demands.
+        $expiresAt = 9223372036854774784;
+        Http::fake([
+            self::ENDPOINT => Http::response(
+                $this->activeResponseJson($expiresAt.'.0'),
+                200,
+                ['Content-Type' => 'application/json'],
+            ),
+        ]);
+
+        $result = app(RemoteOAuthTokenIntrospector::class)->introspect('largest-in-range-float');
+
+        self::assertSame($expiresAt, $result->expiresAt);
     }
 
     public function test_inactive_tokens_remain_inactive_without_requiring_claims(): void

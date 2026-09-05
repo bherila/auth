@@ -39,6 +39,8 @@ use Laravel\Passport\ClientRepository;
 use Laravel\Passport\Passport;
 use Laravel\Passport\PassportServiceProvider;
 use Laravel\Passport\Token;
+use PHPUnit\Framework\Attributes\DataProvider;
+use ReflectionMethod;
 use RuntimeException;
 
 final class OAuthResourceTokenBindingTest extends TestCase
@@ -425,6 +427,32 @@ final class OAuthResourceTokenBindingTest extends TestCase
         )->post('/oauth/introspect', ['token' => $serialized])
             ->assertOk()
             ->assertExactJson(['active' => false]);
+    }
+
+    #[DataProvider('producerTimestampProvider')]
+    public function test_introspection_emits_only_representable_whole_second_timestamps(mixed $value, ?int $expected): void
+    {
+        $timestamp = new ReflectionMethod(OAuthTokenIntrospectionController::class, 'timestamp');
+
+        self::assertSame($expected, $timestamp->invoke(app(OAuthTokenIntrospectionController::class), $value));
+    }
+
+    /** @return array<string, array{mixed, ?int}> */
+    public static function producerTimestampProvider(): array
+    {
+        return [
+            'integer passes through' => [1770000000, 1770000000],
+            'fractional normalizes' => [1770000000.75, 1770000000],
+            'nan' => [NAN, null],
+            'infinity' => [INF, null],
+            'negative infinity' => [-INF, null],
+            'string' => ['1770000000', null],
+            // -(2 ** 63) is also what an out-of-range literal rounds to, so it
+            // must not be emitted as a whole-second claim.
+            'lower bound' => [-(2 ** 63), null],
+            'upper bound' => [2 ** 63, null],
+            'largest representable in range' => [9223372036854774784.0, 9223372036854774784],
+        ];
     }
 
     public function test_introspection_rejects_bad_client_credentials_and_reports_revocation_as_inactive(): void
