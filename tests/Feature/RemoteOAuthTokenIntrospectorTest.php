@@ -100,9 +100,32 @@ final class RemoteOAuthTokenIntrospectorTest extends TestCase
 
         $result = app(RemoteOAuthTokenIntrospector::class)->introspect('fractional-timestamps');
 
+        // exp and iat floor; nbf ceils, so the validity window is never widened.
         self::assertSame($expiresAt, $result->expiresAt);
         self::assertSame($issuedAt, $result->issuedAt);
-        self::assertSame($notBefore, $result->notBefore);
+        self::assertSame($notBefore + 1, $result->notBefore);
+    }
+
+    /**
+     * Flooring an `nbf` of `time() + 0.75` yields exactly `time()`, and parse()
+     * rejects only `$notBefore > $now`, so the token would be honoured up to a
+     * second before it became valid. Ceiling is what closes that window.
+     */
+    public function test_it_does_not_honour_a_token_before_a_fractional_not_before(): void
+    {
+        $expiresAt = time() + 300;
+        $now = time();
+        Http::fake([
+            self::ENDPOINT => Http::response($this->activeResponseJson(
+                (string) $expiresAt,
+                (string) ($now - 10),
+                "{$now}.75",
+            ), 200, ['Content-Type' => 'application/json']),
+        ]);
+
+        $this->expectException(OAuthIntrospectionException::class);
+
+        app(RemoteOAuthTokenIntrospector::class)->introspect('not-yet-valid');
     }
 
     /**

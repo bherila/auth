@@ -77,7 +77,7 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
         $tokenResource = $this->canonicalResource($payload['resource'] ?? null);
         $expiresAt = $this->integer($payload['exp'] ?? null);
         $issuedAt = $this->optionalInteger($payload['iat'] ?? null);
-        $notBefore = $this->optionalInteger($payload['nbf'] ?? null);
+        $notBefore = $this->optionalInteger($payload['nbf'] ?? null, roundTowardFuture: true);
         $audiences = $this->stringList($payload['aud'] ?? null);
         $scopes = $this->scopes($payload['scope'] ?? null);
         $now = time();
@@ -211,12 +211,20 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
      * interoperability failure this validation exists to prevent.
      *
      * Sub-second precision is below the resolution of the comparisons in
-     * parse(), so the value is floored to whole seconds. Flooring keeps `exp`
-     * conservative -- a token never outlives the instant the authorization
-     * server named -- and matches the integral value the companion
-     * introspection endpoint puts on the wire.
+     * parse(), so the value is reduced to whole seconds. The direction of that
+     * reduction is a security property, not a rounding preference: each claim
+     * is moved to the whole second that keeps the token's validity window no
+     * wider than the authorization server declared.
+     *
+     * `exp` and `iat` floor, so a token never outlives the instant it was given.
+     * `nbf` ceils. Flooring an `nbf` of `time() + 0.75` yields exactly `time()`,
+     * and parse() rejects only `$notBefore > $now`, so the token would be
+     * accepted up to a second before it became valid.
+     *
+     * Values at or above 2 ** 53 are already integral in a double, so neither
+     * direction can push an in-range value past the bounds checked below.
      */
-    private function integer(mixed $value): int
+    private function integer(mixed $value, bool $roundTowardFuture = false): int
     {
         if (is_int($value)) {
             return $value;
@@ -228,7 +236,7 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
             throw new OAuthIntrospectionException('The active OAuth introspection response has an invalid timestamp.');
         }
 
-        return (int) floor($value);
+        return (int) ($roundTowardFuture ? ceil($value) : floor($value));
     }
 
     /**
@@ -247,13 +255,13 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
         return $value >= (float) PHP_INT_MIN && $value <= (float) PHP_INT_MAX;
     }
 
-    private function optionalInteger(mixed $value): ?int
+    private function optionalInteger(mixed $value, bool $roundTowardFuture = false): ?int
     {
         if ($value === null) {
             return null;
         }
 
-        return $this->integer($value);
+        return $this->integer($value, $roundTowardFuture);
     }
 
     /** @return list<string> */

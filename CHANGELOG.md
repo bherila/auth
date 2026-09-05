@@ -15,12 +15,18 @@ the first entry here is in the git history.
   emitting integers -- including v0.12.1's own producer fix. A resource server
   pointed at a stock Passport authorization server rejected every live token and
   reported the authorization server as unavailable.
-- Flooring keeps `exp` conservative: a token never outlives the instant the
-  authorization server named. Malformed, non-finite, and out-of-range values are
-  still rejected, and the exclusive 64-bit bounds are unchanged.
-- The introspection endpoint now floors rather than truncating toward zero, so a
-  pre-epoch claim is not rounded toward the future and both sides derive the same
-  whole second.
+- The direction of that rounding is a security property. `exp` and `iat` floor, so
+  a token never outlives the instant it was given. `nbf` ceils: flooring an `nbf`
+  of `time() + 0.75` yields exactly `time()`, and the not-before check rejects only
+  `nbf > now`, so the token would have been honoured up to a second before it
+  became valid.
+- The introspection endpoint applies the same directions when publishing claims,
+  so it never advertises a token as valid earlier than the instant it was issued
+  for, and both sides derive the same whole second.
+- Malformed, non-finite, and out-of-range values are still rejected, and the
+  exclusive 64-bit bounds are unchanged. Values at or above 2 ** 53 are already
+  integral in a double, so neither rounding direction can push an in-range value
+  past those bounds.
 
 ## v0.12.1 - 2026-09-04
 

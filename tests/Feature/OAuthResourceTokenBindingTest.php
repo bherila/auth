@@ -437,6 +437,21 @@ final class OAuthResourceTokenBindingTest extends TestCase
         self::assertSame($expected, $timestamp->invoke(app(OAuthTokenIntrospectionController::class), $value));
     }
 
+    /**
+     * `nbf` is published with the opposite rounding, so the endpoint never
+     * advertises a token as valid earlier than the instant it was issued for.
+     */
+    public function test_introspection_rounds_not_before_toward_the_future(): void
+    {
+        $timestamp = new ReflectionMethod(OAuthTokenIntrospectionController::class, 'timestamp');
+        $controller = app(OAuthTokenIntrospectionController::class);
+
+        self::assertSame(1770000001, $timestamp->invoke($controller, 1770000000.75, true));
+        self::assertSame(1770000000, $timestamp->invoke($controller, 1770000000.0, true));
+        self::assertSame(-1770000000, $timestamp->invoke($controller, -1770000000.75, true));
+        self::assertNull($timestamp->invoke($controller, 2 ** 63, true));
+    }
+
     /** @return array<string, array{mixed, ?int}> */
     public static function producerTimestampProvider(): array
     {
