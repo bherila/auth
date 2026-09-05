@@ -2,6 +2,7 @@
 
 namespace BWH\Auth\OAuth\Introspection;
 
+use BWH\Auth\OAuth\Server\OAuthResourceIndicator;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Response;
 use Throwable;
@@ -20,7 +21,7 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
         $clientId = $this->requiredStringConfig('client_id');
         $clientSecret = $this->requiredStringConfig('client_secret', trim: false);
         $issuer = $this->requiredUrlConfig('issuer');
-        $resource = $this->requiredUrlConfig('resource');
+        $resource = $this->requiredResourceConfig();
         if ($this->origin($endpoint) !== $this->origin($issuer)) {
             throw new OAuthIntrospectionException(
                 'The OAuth introspection endpoint must use the authorization server issuer origin.',
@@ -68,10 +69,10 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
             return IntrospectedToken::inactive();
         }
 
-        $subject = $this->nonEmptyString($payload['sub'] ?? null);
-        $tokenClientId = $this->nonEmptyString($payload['client_id'] ?? null);
+        $subject = $this->nonEmptyString($payload['sub'] ?? null, preserveWhitespace: true);
+        $tokenClientId = $this->nonEmptyString($payload['client_id'] ?? null, preserveWhitespace: true);
         $tokenIssuer = $this->nonEmptyString($payload['iss'] ?? null);
-        $tokenResource = $this->nonEmptyString($payload['resource'] ?? null);
+        $tokenResource = $this->canonicalResource($payload['resource'] ?? null);
         $expiresAt = $this->integer($payload['exp'] ?? null);
         $issuedAt = $this->optionalInteger($payload['iat'] ?? null);
         $notBefore = $this->optionalInteger($payload['nbf'] ?? null);
@@ -81,7 +82,7 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
 
         if ($tokenIssuer !== $issuer
             || $tokenResource !== $resource
-            || ! in_array($resource, $audiences, true)
+            || ! $this->audienceContainsResource($audiences, $resource)
             || $expiresAt <= $now
             || ($notBefore !== null && $notBefore > $now)) {
             throw new OAuthIntrospectionException('The active OAuth token context does not match this resource server.');
@@ -131,6 +132,17 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
         return $value;
     }
 
+    private function requiredResourceConfig(): string
+    {
+        $value = $this->requiredStringConfig('resource');
+        $canonical = OAuthResourceIndicator::canonicalize($value);
+        if ($canonical === null) {
+            throw new OAuthIntrospectionException('OAuth resource-server resource must be an absolute HTTP URL.');
+        }
+
+        return $canonical;
+    }
+
     private function isSecureScheme(string $scheme, string $host): bool
     {
         if (strtolower($scheme) === 'https') {
@@ -157,13 +169,35 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
         return $scheme.'://'.strtolower((string) $parts['host']).':'.$port;
     }
 
-    private function nonEmptyString(mixed $value): string
+    private function nonEmptyString(mixed $value, bool $preserveWhitespace = false): string
     {
         if (! is_string($value) || trim($value) === '') {
             throw new OAuthIntrospectionException('The active OAuth introspection response is incomplete.');
         }
 
-        return trim($value);
+        return $preserveWhitespace ? $value : trim($value);
+    }
+
+    private function canonicalResource(mixed $value): string
+    {
+        $canonical = OAuthResourceIndicator::canonicalize($value);
+        if ($canonical === null) {
+            throw new OAuthIntrospectionException('The active OAuth introspection response is incomplete.');
+        }
+
+        return $canonical;
+    }
+
+    /** @param list<string> $audiences */
+    private function audienceContainsResource(array $audiences, string $resource): bool
+    {
+        foreach ($audiences as $audience) {
+            if (OAuthResourceIndicator::canonicalize($audience) === $resource) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function integer(mixed $value): int

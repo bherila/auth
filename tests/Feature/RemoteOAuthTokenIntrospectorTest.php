@@ -101,6 +101,41 @@ final class RemoteOAuthTokenIntrospectorTest extends TestCase
         app(RemoteOAuthTokenIntrospector::class)->introspect('wrong-resource');
     }
 
+    public function test_it_canonicalizes_resource_identifiers_without_tls_restriction(): void
+    {
+        $configured = 'HTTPS://RESOURCE.EXAMPLE.TEST:443/mcp';
+        config(['bherila-auth.oauth_resource_server.resource' => $configured]);
+        Http::fake([self::ENDPOINT => Http::response([
+            'active' => true, 'iss' => 'https://auth.example.test', 'sub' => '42',
+            'client_id' => 'public-client', 'scope' => 'mcp:use', 'exp' => time() + 300,
+            'aud' => ['public-client', 'https://resource.example.test/mcp'],
+            'resource' => 'HTTPS://RESOURCE.EXAMPLE.TEST:443/mcp',
+        ])]);
+
+        self::assertSame('https://resource.example.test/mcp', app(RemoteOAuthTokenIntrospector::class)->introspect('token')->resource);
+    }
+
+    public function test_it_preserves_opaque_subject_and_client_identifier_whitespace(): void
+    {
+        Http::fake([self::ENDPOINT => Http::response([
+            'active' => true, 'iss' => 'https://auth.example.test', 'sub' => ' subject ',
+            'client_id' => ' client ', 'scope' => 'mcp:use', 'exp' => time() + 300,
+            'aud' => ['public-client', self::RESOURCE], 'resource' => self::RESOURCE,
+        ])]);
+
+        $result = app(RemoteOAuthTokenIntrospector::class)->introspect('token');
+        self::assertSame(' subject ', $result->subject);
+        self::assertSame(' client ', $result->clientId);
+    }
+
+    public function test_http_resource_is_allowed_when_introspection_endpoint_is_https(): void
+    {
+        config(['bherila-auth.oauth_resource_server.resource' => 'http://resource.example.test/mcp']);
+        Http::fake([self::ENDPOINT => Http::response(['active' => false])]);
+
+        self::assertFalse(app(RemoteOAuthTokenIntrospector::class)->introspect('token')->active);
+    }
+
     public function test_http_and_schema_failures_are_reported_as_unavailable(): void
     {
         Http::fake([self::ENDPOINT => Http::response(['active' => 'yes'], 200)]);
