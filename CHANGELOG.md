@@ -4,6 +4,24 @@ Notable changes per release. Versions follow the tags published to
 [Packagist](https://packagist.org/packages/bherila/auth-laravel); anything older than
 the first entry here is in the git history.
 
+## v0.12.2 - 2026-09-05
+
+### Accept fractional NumericDate timestamps during introspection
+
+- Remote introspection now accepts fractional `exp`, `iat`, and `nbf` claims and
+  floors them to whole seconds. RFC 7519 defines NumericDate as a JSON numeric
+  value and states that non-integer values can be represented, so rejecting them
+  made the resource server dependent on every authorization server it talks to
+  emitting integers -- including v0.12.1's own producer fix. A resource server
+  pointed at a stock Passport authorization server rejected every live token and
+  reported the authorization server as unavailable.
+- Flooring keeps `exp` conservative: a token never outlives the instant the
+  authorization server named. Malformed, non-finite, and out-of-range values are
+  still rejected, and the exclusive 64-bit bounds are unchanged.
+- The introspection endpoint now floors rather than truncating toward zero, so a
+  pre-epoch claim is not rounded toward the future and both sides derive the same
+  whole second.
+
 ## v0.12.1 - 2026-09-04
 
 ### OAuth introspection timestamp interoperability

@@ -119,13 +119,15 @@ final readonly class OAuthTokenIntrospectionController
         // Passport's NumericDate claims include sub-second precision. RFC 7662
         // consumers commonly decode these claims as integral timestamps, so
         // normalize finite values to whole seconds at this response boundary.
+        // Floor rather than truncate, so `exp` is never rounded toward the
+        // future and the value matches what the companion introspector derives.
         if (! is_float($value)
             || ! is_finite($value)
             || ! $this->withinIntegerRange($value)) {
             return null;
         }
 
-        return (int) $value;
+        return (int) floor($value);
     }
 
     /**

@@ -202,6 +202,20 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
         return false;
     }
 
+    /**
+     * RFC 7519 defines NumericDate as a JSON numeric value and states outright
+     * that non-integer values can be represented, so a fractional `exp`, `iat`
+     * or `nbf` is a conforming response rather than a malformed one. Laravel
+     * Passport emits exactly that. Rejecting it would push the requirement onto
+     * every authorization server this resource server talks to, which is the
+     * interoperability failure this validation exists to prevent.
+     *
+     * Sub-second precision is below the resolution of the comparisons in
+     * parse(), so the value is floored to whole seconds. Flooring keeps `exp`
+     * conservative -- a token never outlives the instant the authorization
+     * server named -- and matches the integral value the companion
+     * introspection endpoint puts on the wire.
+     */
     private function integer(mixed $value): int
     {
         if (is_int($value)) {
@@ -210,12 +224,11 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
 
         if (! is_float($value)
             || ! is_finite($value)
-            || floor($value) !== $value
             || ! $this->withinIntegerRange($value)) {
             throw new OAuthIntrospectionException('The active OAuth introspection response has an invalid timestamp.');
         }
 
-        return (int) $value;
+        return (int) floor($value);
     }
 
     /**

@@ -443,6 +443,9 @@ final class OAuthResourceTokenBindingTest extends TestCase
         return [
             'integer passes through' => [1770000000, 1770000000],
             'fractional normalizes' => [1770000000.75, 1770000000],
+            // Floor, not truncation toward zero: a pre-epoch claim must not be
+            // rounded toward the future.
+            'negative fractional floors' => [-1770000000.75, -1770000001],
             'nan' => [NAN, null],
             'infinity' => [INF, null],
             'negative infinity' => [-INF, null],

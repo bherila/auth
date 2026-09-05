@@ -80,8 +80,53 @@ final class RemoteOAuthTokenIntrospectorTest extends TestCase
         self::assertSame($notBefore, $result->notBefore);
     }
 
+    /**
+     * The shape Laravel Passport actually emits. Before this was accepted, a
+     * resource server pointed at a stock Passport authorization server rejected
+     * every live token and reported the authorization server as unavailable.
+     */
+    public function test_it_accepts_fractional_numeric_date_timestamps(): void
+    {
+        $expiresAt = time() + 300;
+        $issuedAt = time() - 10;
+        $notBefore = time() - 10;
+        Http::fake([
+            self::ENDPOINT => Http::response($this->activeResponseJson(
+                "{$expiresAt}.76965808868408203125",
+                "{$issuedAt}.776278018951416015625",
+                "{$notBefore}.776279926300048828125",
+            ), 200, ['Content-Type' => 'application/json']),
+        ]);
+
+        $result = app(RemoteOAuthTokenIntrospector::class)->introspect('fractional-timestamps');
+
+        self::assertSame($expiresAt, $result->expiresAt);
+        self::assertSame($issuedAt, $result->issuedAt);
+        self::assertSame($notBefore, $result->notBefore);
+    }
+
+    /**
+     * Flooring must not round a fraction up into validity: an `exp` whose whole
+     * second has already passed is expired no matter how large its fraction is.
+     */
+    public function test_it_floors_rather_than_rounds_a_fractional_expiry(): void
+    {
+        $expiresAt = time();
+        Http::fake([
+            self::ENDPOINT => Http::response(
+                $this->activeResponseJson($expiresAt.'.999999'),
+                200,
+                ['Content-Type' => 'application/json'],
+            ),
+        ]);
+
+        $this->expectException(OAuthIntrospectionException::class);
+
+        app(RemoteOAuthTokenIntrospector::class)->introspect('fractional-expired');
+    }
+
     #[DataProvider('invalidTimestampProvider')]
-    public function test_it_rejects_non_integral_or_out_of_range_timestamps(string $timestamp): void
+    public function test_it_rejects_malformed_or_out_of_range_timestamps(string $timestamp): void
     {
         Http::fake([
             self::ENDPOINT => Http::response(
@@ -100,7 +145,6 @@ final class RemoteOAuthTokenIntrospectorTest extends TestCase
     public static function invalidTimestampProvider(): array
     {
         return [
-            'fraction' => ['1770000000.5'],
             'string' => ['"1770000000"'],
             'nan' => ['NaN'],
             'infinity' => ['Infinity'],
@@ -146,7 +190,6 @@ final class RemoteOAuthTokenIntrospectorTest extends TestCase
             'float lower bound' => ['-9223372036854775808.0'],
             'float overflow' => ['9223372036854775809.0'],
             'float upper bound' => ['9223372036854775808.0'],
-            'fraction' => ['1770000000.5'],
             'integer underflow' => ['-9223372036854775809'],
         ];
     }
