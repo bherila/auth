@@ -64,7 +64,7 @@ final readonly class OAuthTokenIntrospectionController
             ? $this->timestamp($claims['iat'])
             : null;
         $notBefore = array_key_exists('nbf', $claims ?? [])
-            ? $this->timestamp($claims['nbf'])
+            ? $this->timestamp($claims['nbf'], roundTowardFuture: true)
             : null;
         if ((! is_string($subject) && ! is_int($subject))
             || (string) $subject === ''
@@ -110,7 +110,7 @@ final readonly class OAuthTokenIntrospectionController
         ];
     }
 
-    private function timestamp(mixed $value): ?int
+    private function timestamp(mixed $value, bool $roundTowardFuture = false): ?int
     {
         if (is_int($value)) {
             return $value;
@@ -119,13 +119,16 @@ final readonly class OAuthTokenIntrospectionController
         // Passport's NumericDate claims include sub-second precision. RFC 7662
         // consumers commonly decode these claims as integral timestamps, so
         // normalize finite values to whole seconds at this response boundary.
+        // The direction narrows the validity window rather than widening it:
+        // `exp` and `iat` floor, `nbf` ceils. Publishing a floored `nbf` would
+        // advertise the token as valid up to a second early to every consumer.
         if (! is_float($value)
             || ! is_finite($value)
             || ! $this->withinIntegerRange($value)) {
             return null;
         }
 
-        return (int) $value;
+        return (int) ($roundTowardFuture ? ceil($value) : floor($value));
     }
 
     /**
