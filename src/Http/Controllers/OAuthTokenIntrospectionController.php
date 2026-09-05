@@ -59,10 +59,20 @@ final readonly class OAuthTokenIntrospectionController
         $subject = $validated->getAttribute('oauth_user_id');
         $clientId = $validated->getAttribute('oauth_client_id');
         $scopes = OAuthResourceIndicator::scopeIdentifiers($validated->getAttribute('oauth_scopes'));
+        $expiresAt = $this->timestamp($claims['exp'] ?? null);
+        $issuedAt = array_key_exists('iat', $claims ?? [])
+            ? $this->timestamp($claims['iat'])
+            : null;
+        $notBefore = array_key_exists('nbf', $claims ?? [])
+            ? $this->timestamp($claims['nbf'])
+            : null;
         if ((! is_string($subject) && ! is_int($subject))
             || (string) $subject === ''
             || (! is_string($clientId) && ! is_int($clientId))
-            || (string) $clientId === '') {
+            || (string) $clientId === ''
+            || $expiresAt === null
+            || (array_key_exists('iat', $claims ?? []) && $issuedAt === null)
+            || (array_key_exists('nbf', $claims ?? []) && $notBefore === null)) {
             return $this->inactive();
         }
 
@@ -72,14 +82,15 @@ final readonly class OAuthTokenIntrospectionController
             'sub' => (string) $subject,
             'client_id' => (string) $clientId,
             'scope' => implode(' ', $scopes),
-            'exp' => $claims['exp'] ?? null,
+            'exp' => $expiresAt,
             'aud' => $claims['aud'] ?? null,
             'resource' => $claims['resource'] ?? null,
         ];
-        foreach (['iat', 'nbf'] as $claim) {
-            if (isset($claims[$claim])) {
-                $response[$claim] = $claims[$claim];
-            }
+        if ($issuedAt !== null) {
+            $response['iat'] = $issuedAt;
+        }
+        if ($notBefore !== null) {
+            $response['nbf'] = $notBefore;
         }
 
         return response()->json($response)->withHeaders($this->nonCacheableHeaders());
@@ -97,5 +108,39 @@ final readonly class OAuthTokenIntrospectionController
             'Cache-Control' => 'no-store',
             'Pragma' => 'no-cache',
         ];
+    }
+
+    private function timestamp(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        // Passport's NumericDate claims include sub-second precision. RFC 7662
+        // consumers commonly decode these claims as integral timestamps, so
+        // normalize finite values to whole seconds at this response boundary.
+        if (! is_float($value)
+            || ! is_finite($value)
+            || ! $this->withinIntegerRange($value)) {
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    /**
+     * Doubles cannot represent every integer near the 64-bit bounds, so an
+     * out-of-range value that rounds to exactly PHP_INT_MIN must not be
+     * emitted as a whole-second claim. Both bounds are therefore exclusive
+     * there. A 32-bit int range is represented exactly by a double, so those
+     * bounds stay inclusive.
+     */
+    private function withinIntegerRange(float $value): bool
+    {
+        if (PHP_INT_SIZE >= 8) {
+            return $value > -(2 ** 63) && $value < 2 ** 63;
+        }
+
+        return $value >= (float) PHP_INT_MIN && $value <= (float) PHP_INT_MAX;
     }
 }

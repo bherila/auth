@@ -4,6 +4,22 @@ Notable changes per release. Versions follow the tags published to
 [Packagist](https://packagist.org/packages/bherila/auth-laravel); anything older than
 the first entry here is in the git history.
 
+## v0.12.1 - 2026-09-04
+
+### OAuth introspection timestamp interoperability
+
+- Normalized the introspection response's `exp`, `iat`, and `nbf` claims to integer
+  NumericDate wire values. Passport emits fractional timestamps, which RFC 7662
+  consumers that decode these claims as integers rejected outright.
+- Remote introspection accepts integers and finite integral JSON floats, and rejects
+  fractional, string, non-finite, and out-of-range values. Decoding uses
+  `JSON_BIGINT_AS_STRING` so oversized integer literals cannot be silently accepted.
+- Both magnitude bounds are exclusive on 64-bit builds: an out-of-range literal such
+  as `-9223372036854775809.0` has no double representation and rounds onto exactly
+  `PHP_INT_MIN`, which an inclusive lower bound would have accepted as a valid
+  timestamp. A 32-bit integer range is represented exactly by a double, so those
+  bounds remain inclusive.
+
 ## v0.12.0 - 2026-09-04
 
 ### Separate authorization and resource servers
