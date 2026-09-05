@@ -405,6 +405,9 @@ final class OAuthResourceTokenBindingTest extends TestCase
             ->assertJsonPath('client_id', (string) $client->getKey())
             ->assertJsonPath('scope', 'mcp:use')
             ->assertJsonPath('resource', self::RESOURCE);
+        self::assertIsInt($active->json('exp'));
+        self::assertIsInt($active->json('iat'));
+        self::assertIsInt($active->json('nbf'));
         self::assertContains(self::RESOURCE, $active->json('aud'));
 
         config(['bherila-auth.oauth_server.introspection.clients.0.resource' => 'HTTPS://AUTH.EXAMPLE.TEST:443/mcp']);

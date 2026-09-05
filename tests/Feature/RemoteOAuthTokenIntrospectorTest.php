@@ -7,6 +7,7 @@ use BWH\Auth\OAuth\Introspection\RemoteOAuthTokenIntrospector;
 use BWH\Auth\Tests\TestCase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 final class RemoteOAuthTokenIntrospectorTest extends TestCase
 {
@@ -59,11 +60,68 @@ final class RemoteOAuthTokenIntrospectorTest extends TestCase
         });
     }
 
+    public function test_it_accepts_integral_float_timestamps_from_json(): void
+    {
+        $expiresAt = time() + 300;
+        $issuedAt = time() - 10;
+        $notBefore = time() - 10;
+        Http::fake([
+            self::ENDPOINT => Http::response($this->activeResponseJson(
+                "{$expiresAt}.0",
+                "{$issuedAt}.0",
+                "{$notBefore}.0",
+            ), 200, ['Content-Type' => 'application/json']),
+        ]);
+
+        $result = app(RemoteOAuthTokenIntrospector::class)->introspect('integral-float-timestamps');
+
+        self::assertSame($expiresAt, $result->expiresAt);
+        self::assertSame($issuedAt, $result->issuedAt);
+        self::assertSame($notBefore, $result->notBefore);
+    }
+
+    #[DataProvider('invalidTimestampProvider')]
+    public function test_it_rejects_non_integral_or_out_of_range_timestamps(string $timestamp): void
+    {
+        Http::fake([
+            self::ENDPOINT => Http::response(
+                $this->activeResponseJson($timestamp),
+                200,
+                ['Content-Type' => 'application/json'],
+            ),
+        ]);
+
+        $this->expectException(OAuthIntrospectionException::class);
+
+        app(RemoteOAuthTokenIntrospector::class)->introspect('invalid-timestamp');
+    }
+
+    /** @return array<string, array{string}> */
+    public static function invalidTimestampProvider(): array
+    {
+        return [
+            'fraction' => ['1770000000.5'],
+            'string' => ['"1770000000"'],
+            'nan' => ['NaN'],
+            'infinity' => ['Infinity'],
+            'overflow' => ['9223372036854775808'],
+            'underflow' => ['-9223372036854775809'],
+        ];
+    }
+
     public function test_inactive_tokens_remain_inactive_without_requiring_claims(): void
     {
         Http::fake([self::ENDPOINT => Http::response(['active' => false])]);
 
         self::assertFalse(app(RemoteOAuthTokenIntrospector::class)->introspect('revoked')->active);
+    }
+
+    private function activeResponseJson(string $expiresAt, string $issuedAt = '1770000000', string $notBefore = '1770000000'): string
+    {
+        return '{"active":true,"iss":"https://auth.example.test","sub":"42",'
+            .'"client_id":"public-client","scope":"mcp:use","exp":'.$expiresAt
+            .',"iat":'.$issuedAt.',"nbf":'.$notBefore.',"aud":["public-client","'
+            .self::RESOURCE.'"],"resource":"'.self::RESOURCE.'"}';
     }
 
     public function test_it_form_encodes_basic_credentials(): void

@@ -60,8 +60,10 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
 
     private function parse(Response $response, string $issuer, string $resource): IntrospectedToken
     {
-        $payload = $response->json();
-        if (! is_array($payload) || ! is_bool($payload['active'] ?? null)) {
+        $payload = json_decode($response->body(), true, 512, JSON_BIGINT_AS_STRING);
+        if (json_last_error() !== JSON_ERROR_NONE
+            || ! is_array($payload)
+            || ! is_bool($payload['active'] ?? null)) {
             throw new OAuthIntrospectionException('The OAuth introspection response is invalid.');
         }
 
@@ -202,11 +204,19 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
 
     private function integer(mixed $value): int
     {
-        if (! is_int($value)) {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (! is_float($value)
+            || ! is_finite($value)
+            || floor($value) !== $value
+            || $value < (float) PHP_INT_MIN
+            || (PHP_INT_SIZE >= 8 ? $value >= 2 ** 63 : $value > (float) PHP_INT_MAX)) {
             throw new OAuthIntrospectionException('The active OAuth introspection response has an invalid timestamp.');
         }
 
-        return $value;
+        return (int) $value;
     }
 
     private function optionalInteger(mixed $value): ?int
