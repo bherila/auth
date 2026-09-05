@@ -6,6 +6,7 @@ use BWH\Auth\OAuth\Introspection\OAuthIntrospectionClientRegistry;
 use BWH\Auth\OAuth\Introspection\OAuthIntrospectionValidationContext;
 use BWH\Auth\OAuth\Server\OAuthResourceIndicator;
 use GuzzleHttp\Psr7\ServerRequest;
+use InvalidArgumentException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use League\OAuth2\Server\Exception\OAuthServerException;
@@ -50,7 +51,7 @@ final readonly class OAuthTokenIntrospectionController
                         ->withHeader('Authorization', 'Bearer '.$token),
                 );
             });
-        } catch (OAuthServerException) {
+        } catch (OAuthServerException|InvalidArgumentException) {
             return $this->inactive();
         }
 

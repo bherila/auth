@@ -57,7 +57,7 @@ therefore rechecked before every protected request.
 ```php
 use BWH\Auth\OAuth\Introspection\OAuthTokenIntrospector;
 
-$token = app(OAuthTokenIntrospector::class)->introspect($request->bearerToken());
+$token = app(OAuthTokenIntrospector::class)->introspect($request->bearerToken() ?? '');
 ```
 
 Set `OAUTH_INTROSPECTION_ENDPOINT`, `OAUTH_INTROSPECTION_CLIENT_ID`,

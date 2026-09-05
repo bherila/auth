@@ -18,7 +18,7 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
         }
 
         $endpoint = $this->requiredUrlConfig('introspection_endpoint');
-        $clientId = $this->requiredStringConfig('client_id');
+        $clientId = $this->requiredStringConfig('client_id', trim: false);
         $clientSecret = $this->requiredStringConfig('client_secret', trim: false);
         $issuer = $this->requiredUrlConfig('issuer');
         $resource = $this->requiredResourceConfig();
@@ -233,7 +233,7 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
             if (! is_string($item) || trim($item) === '') {
                 throw new OAuthIntrospectionException('The active OAuth introspection response has an invalid audience.');
             }
-            $values[] = trim($item);
+            $values[] = $item;
         }
 
         return array_values(array_unique($values));
