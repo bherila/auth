@@ -5,6 +5,7 @@ namespace BWH\Auth\OAuth\Introspection;
 use BWH\Auth\OAuth\Server\OAuthResourceIndicator;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Carbon;
 use Throwable;
 
 final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospector
@@ -80,7 +81,11 @@ final readonly class RemoteOAuthTokenIntrospector implements OAuthTokenIntrospec
         $notBefore = $this->optionalInteger($payload['nbf'] ?? null, roundTowardFuture: true);
         $audiences = $this->stringList($payload['aud'] ?? null);
         $scopes = $this->scopes($payload['scope'] ?? null);
-        $now = time();
+        // Carbon rather than time(), so the not-before and expiry comparisons
+        // sit on a clock a test can freeze. The sub-second rounding below only
+        // matters at a whole-second boundary, which is otherwise unreachable
+        // deterministically.
+        $now = Carbon::now()->getTimestamp();
 
         if ($tokenIssuer !== $issuer
             || $tokenResource !== $resource

@@ -6,6 +6,7 @@ use BWH\Auth\OAuth\Introspection\OAuthIntrospectionException;
 use BWH\Auth\OAuth\Introspection\RemoteOAuthTokenIntrospector;
 use BWH\Auth\Tests\TestCase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
 
@@ -107,17 +108,23 @@ final class RemoteOAuthTokenIntrospectorTest extends TestCase
     }
 
     /**
-     * Flooring an `nbf` of `time() + 0.75` yields exactly `time()`, and parse()
+     * Flooring an `nbf` of `now + 0.75` yields exactly `now`, and parse()
      * rejects only `$notBefore > $now`, so the token would be honoured up to a
      * second before it became valid. Ceiling is what closes that window.
+     *
+     * The clock is frozen because this is a whole-second boundary case: if the
+     * second ticked between building the payload and the comparison in parse(),
+     * the ceiled `nbf` would equal the new current second and the token would
+     * be accepted for a reason that has nothing to do with the rounding.
      */
     public function test_it_does_not_honour_a_token_before_a_fractional_not_before(): void
     {
-        $expiresAt = time() + 300;
-        $now = time();
+        Carbon::setTestNow(Carbon::createFromTimestamp(1770000000));
+        $now = Carbon::now()->getTimestamp();
+
         Http::fake([
             self::ENDPOINT => Http::response($this->activeResponseJson(
-                (string) $expiresAt,
+                (string) ($now + 300),
                 (string) ($now - 10),
                 "{$now}.75",
             ), 200, ['Content-Type' => 'application/json']),
@@ -126,6 +133,30 @@ final class RemoteOAuthTokenIntrospectorTest extends TestCase
         $this->expectException(OAuthIntrospectionException::class);
 
         app(RemoteOAuthTokenIntrospector::class)->introspect('not-yet-valid');
+    }
+
+    /**
+     * The same frozen instant, one second earlier: once `now` reaches the
+     * ceiled `nbf` the token must be honoured, so the claim above is about
+     * rounding direction and not about rejecting fractional `nbf` outright.
+     */
+    public function test_it_honours_a_token_once_a_fractional_not_before_has_passed(): void
+    {
+        Carbon::setTestNow(Carbon::createFromTimestamp(1770000001));
+        $notBefore = 1770000000;
+
+        Http::fake([
+            self::ENDPOINT => Http::response($this->activeResponseJson(
+                (string) (1770000001 + 300),
+                (string) ($notBefore - 10),
+                "{$notBefore}.75",
+            ), 200, ['Content-Type' => 'application/json']),
+        ]);
+
+        $result = app(RemoteOAuthTokenIntrospector::class)->introspect('now-valid');
+
+        self::assertTrue($result->active);
+        self::assertSame($notBefore + 1, $result->notBefore);
     }
 
     /**
